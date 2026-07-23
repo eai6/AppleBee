@@ -2,10 +2,27 @@
 .Rhistory
 .RData
 .Ruserdata
-data
-docs
-Python_scripts/data
-Python_scripts/venv
-output
 .DS_Store
-venv
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Original exploratory tree: keep the code, skip the bulk data and its venv.
+archives/data
+archives/output
+archives/Python_scripts/data
+archives/Python_scripts/AWS/*.nc
+archives/venv
+# 100 MB PRISM grid shapefile; regenerate from archives/data/prism_4km_mesh
+archives/research/data/prism_4km_mesh
+
+# Derived PRISM matrices (~720 MB) -- rebuild with scripts/build_cache.py
+data/cache/
+
+# Simulation output (~10 MB/run) -- rebuild with scripts/run_pa_simulation.py
+outputs/*.parquet
+outputs/*_failures.csv
+
+# The thesis PDF is large; the replication notes beside it are tracked.
+docs/*.pdf
