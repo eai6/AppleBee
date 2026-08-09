@@ -1,0 +1,44 @@
+{
+  "dataset": "PRISM daily 4 km, Northeast",
+  "source": "https://services.nacse.org/prism/data/get/us/4km/{variable}/{YYYYMMDD}",
+  "retrieved": "2026-08-06/07",
+  "variables": [
+    "tmean",
+    "ppt"
+  ],
+  "period": "2013-01-01..2018-12-31",
+  "days": 2191,
+  "cells": 102555,
+  "grid": "PRISM 4 km CONUS, origin (-125.0208333, 49.9375), 1/24 degree",
+  "delivery_format": "GeoTIFF (prism_{var}_us_25m_{date}.tif)",
+  "source_rasters": "DISCARDED after sampling (--discard-rasters)",
+  "rebuildable_locally": false,
+  "rebuild_cost": "~9 GB re-download, ~7 h, subject to PRISM's 2-downloads-per-file-per-24h limit",
+  "validated": "100.0000% exactly equal to archives/output/*_prism_pennsylvania_data_1990_2023.csv on 7,452 shared cells x 129 sampled days, both variables (max |diff| 0.0)",
+  "files": {
+    "northeast_ppt.cells.parquet": {
+      "bytes": 76033,
+      "sha256": "5985c10ab8e917b5fbfebcf372d06d3a1c28824262d4e4901d475277c4a71e7e"
+    },
+    "northeast_ppt.dates.npy": {
+      "bytes": 17656,
+      "sha256": "4e577f1757c4f6813e6cd01df341754eb8efedbdf220a96be7a219754801088a"
+    },
+    "northeast_ppt.values.npy": {
+      "bytes": 898792148,
+      "sha256": "1bdfc16b415b8194ed5a64c1aa0b7f98c7915da9e186c0336cb2fece9e059664"
+    },
+    "northeast_tmean.cells.parquet": {
+      "bytes": 76033,
+      "sha256": "5985c10ab8e917b5fbfebcf372d06d3a1c28824262d4e4901d475277c4a71e7e"
+    },
+    "northeast_tmean.dates.npy": {
+      "bytes": 17656,
+      "sha256": "4e577f1757c4f6813e6cd01df341754eb8efedbdf220a96be7a219754801088a"
+    },
+    "northeast_tmean.values.npy": {
+      "bytes": 898792148,
+      "sha256": "f96094a791db4edc9e370e6a3929a667f58fb3c83ea45ceea1e7ad24a4e9ad88"
+    }
+  }
+}

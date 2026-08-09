@@ -1,0 +1,46 @@
+{
+  "dataset": "PRISM daily 4 km, contiguous United States (land cells)",
+  "source": "https://services.nacse.org/prism/data/get/us/4km/{variable}/{YYYYMMDD}",
+  "retrieved": "2026-08-07/08",
+  "variables": [
+    "tmean",
+    "ppt"
+  ],
+  "period": "2013-01-01..2018-12-31",
+  "days": 2191,
+  "cells": 481631,
+  "cell_selection": "CONUS land mask -- cells carrying data in a PRISM raster; the full grid is 872,505 cells but 391k are ocean/nodata",
+  "grid": "PRISM 4 km CONUS, origin (-125.0208333, 49.9375), 1/24 degree",
+  "delivery_format": "GeoTIFF (prism_{var}_us_25m_{date}.tif)",
+  "source_rasters": "DISCARDED after sampling (--discard-rasters)",
+  "rebuildable_locally": false,
+  "rebuild_cost": "~9 GB re-download, ~9 h, subject to PRISM's 2-downloads-per-file-per-24h limit",
+  "validated": "100.0000% exactly equal to archives/output/*_prism_pennsylvania_data_1990_2023.csv on 7,452 shared cells x 76 sampled days, both variables (max |diff| 0.0)",
+  "missing_days": 0,
+  "files": {
+    "conus_ppt.cells.parquet": {
+      "bytes": 928756,
+      "sha256": "015e2456f2b9d3fa818e5c18a0a1f5ffa1188b89e4ef14ee0ac48a0f9f2bdae2"
+    },
+    "conus_ppt.dates.npy": {
+      "bytes": 17656,
+      "sha256": "4e577f1757c4f6813e6cd01df341754eb8efedbdf220a96be7a219754801088a"
+    },
+    "conus_ppt.values.npy": {
+      "bytes": 4221014212,
+      "sha256": "c066ef87abad79de17a9f1ad356f38978cd5b9acb30d4c9a856ca40a2647b727"
+    },
+    "conus_tmean.cells.parquet": {
+      "bytes": 928756,
+      "sha256": "015e2456f2b9d3fa818e5c18a0a1f5ffa1188b89e4ef14ee0ac48a0f9f2bdae2"
+    },
+    "conus_tmean.dates.npy": {
+      "bytes": 17656,
+      "sha256": "4e577f1757c4f6813e6cd01df341754eb8efedbdf220a96be7a219754801088a"
+    },
+    "conus_tmean.values.npy": {
+      "bytes": 4221014212,
+      "sha256": "0fe7758d96d94f5bb4896a8a3a0ac8fa8dc9a46b71b7207cffcac4103487a16c"
+    }
+  }
+}

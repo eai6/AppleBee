@@ -17,12 +17,48 @@ archives/venv
 # 100 MB PRISM grid shapefile; regenerate from archives/data/prism_4km_mesh
 archives/research/data/prism_4km_mesh
 
-# Derived PRISM matrices (~720 MB) -- rebuild with scripts/build_cache.py
+# Derived PA/NY matrices (~720 MB). Genuinely disposable: rebuild with
+# scripts/build_cache.py from the wide CSVs in archives/output/.
+#
+# NOTE: data/inputs/weather/northeast/ is NOT here and is NOT disposable --
+# it has no local source to rebuild from (the rasters were discarded after
+# sampling), so deleting it costs a ~9 GB re-download under PRISM's
+# two-fetches-per-file-per-24-hours limit. See its PROVENANCE.json.
 data/cache/
 
-# Simulation output (~10 MB/run) -- rebuild with scripts/run_pa_simulation.py
+# Acquired weather matrices: too large for git (Northeast 1.7 GB, CONUS 8.4 GB)
+# but irreplaceable without re-downloading. Kept out of data/cache/ deliberately
+# so a "clear the cache" never destroys them. PROVENANCE.json beside each records
+# the source, coverage and a SHA-256 per file, and IS tracked.
+data/inputs/weather/*/*.npy
+data/inputs/weather/*/*.parquet
+
+# Forage indices built by scripts/build_forage.py. The Pennsylvania index
+# (6.7 MB, inherited from the archive) stays tracked; the regional ones this
+# project generated are 44-280 MB and are reproducible from the CDL:
+#   python scripts/build_forage.py --years 2013 2018 --region conus
+data/inputs/forage/northeast_forage_spring_lonsdorf.csv
+data/inputs/forage/conus_forage_spring_lonsdorf.csv
+data/inputs/forage/*_forage_by_year/
+data/inputs/forage/_backup_state_mosaic/
+
+# The two PA PRISM exports under data/inputs/weather/ are symlinks into
+# archives/output/ (2.3 GB, untrackable). Committing the links would leave a
+# clone with dangling paths; see data/inputs/MANIFEST.md.
+data/inputs/weather/pa_tmean_prism_daily.csv
+data/inputs/weather/pa_ppt_prism_daily.csv
+
+# data/raw/ is the drop box for new source files before they are described in
+# data/inputs/MANIFEST.md and moved into data/inputs/.
+data/raw/
+
+# Simulation output -- rebuild with the run_*_simulation scripts. Summary tables
+# under outputs/tables/ and the figures are small and stay tracked.
 outputs/*.parquet
 outputs/*_failures.csv
+
+# Run logs from long fetches and builds; the findings are written up in memory/.
+outputs/*.log
 
 # The thesis PDF is large; the replication notes beside it are tracked.
 docs/*.pdf

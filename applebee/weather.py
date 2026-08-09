@@ -161,20 +161,51 @@ def _parse_wide_csv(path: Path) -> tuple[np.ndarray, pd.DatetimeIndex, pd.DataFr
     return values, date_index, cells
 
 
-def load_weather(path: Path, cache_key: str | None = None, use_cache: bool = True) -> WeatherGrid:
+def load_matrices(directory: Path, key: str) -> WeatherGrid:
+    """Load an already-built ``(n_cells, n_days)`` matrix set from any directory.
+
+    Used for weather that has no wide-CSV source to fall back on -- anything
+    fetched by :mod:`applebee.acquire.prism`, where the matrices *are* the
+    primary copy rather than a derived cache.
+    """
+    directory = Path(directory)
+    missing = [
+        p for p in (directory / f"{key}.values.npy", directory / f"{key}.dates.npy",
+                    directory / f"{key}.cells.parquet") if not p.exists()
+    ]
+    if missing:
+        raise FileNotFoundError(f"missing matrix files for {key!r}: {missing}")
+    return WeatherGrid(
+        values=np.load(directory / f"{key}.values.npy", mmap_mode="r"),
+        dates=pd.DatetimeIndex(np.load(directory / f"{key}.dates.npy")),
+        cells=pd.read_parquet(directory / f"{key}.cells.parquet"),
+    )
+
+
+def load_weather(
+    path: Path,
+    cache_key: str | None = None,
+    use_cache: bool = True,
+    cache_dir: Path | None = None,
+) -> WeatherGrid:
     """Load a wide PRISM CSV, caching the parsed matrix as ``.npy``.
 
     Args:
         path: Source CSV.
         cache_key: Basename for the cache files; defaults to the CSV stem.
         use_cache: Set False to bypass and rewrite the cache.
+        cache_dir: Where the matrices live; defaults to ``data/cache``. Point
+            this elsewhere for matrices that are a primary copy rather than a
+            derivative -- ``data/cache`` is safe to delete, and anything
+            irreplaceable must not live there.
     """
     path = Path(path)
     key = cache_key or path.stem
-    CACHE.mkdir(parents=True, exist_ok=True)
-    values_path = CACHE / f"{key}.values.npy"
-    dates_path = CACHE / f"{key}.dates.npy"
-    cells_path = CACHE / f"{key}.cells.parquet"
+    root = Path(cache_dir or CACHE)
+    root.mkdir(parents=True, exist_ok=True)
+    values_path = root / f"{key}.values.npy"
+    dates_path = root / f"{key}.dates.npy"
+    cells_path = root / f"{key}.cells.parquet"
 
     if use_cache and values_path.exists() and dates_path.exists() and cells_path.exists():
         # Rebuild if the source CSV is newer than the cache.
