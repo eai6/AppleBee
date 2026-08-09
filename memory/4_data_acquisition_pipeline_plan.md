@@ -387,7 +387,7 @@ should be settled before Phase 4.
 
 | SHA | Date | Subject |
 |---|---|---|
-| _pending_ | | |
+| `4146782` | 2026-08-08 | Acquire PRISM weather and CDL forage from source |
 
 ## Follow-ups
 

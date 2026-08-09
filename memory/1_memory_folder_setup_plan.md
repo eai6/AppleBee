@@ -49,7 +49,7 @@ Conventions agreed:
 
 | SHA | Date | Subject |
 |---|---|---|
-| _pending_ | 2026-08-05 | Add memory/ session log with plan-to-commit convention |
+| `3858cde` | 2026-08-08 | Add memory/ session log with a plan-to-commit convention |
 
 ## Open threads in the project
 

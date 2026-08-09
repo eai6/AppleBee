@@ -101,6 +101,12 @@ observations explaining 21% of variance at p = 0.36.
 - **Cells needing both weather and forage** — 44,756 of 44,759 run; the three
   that fail are genuine cold-limit cells and are reported, not hidden.
 
+## Commits
+
+| SHA | Date | Subject |
+|---|---|---|
+| `8129722` | 2026-08-08 | Simulate the Northeast and the contiguous United States, 2014-2019 |
+
 ## Follow-ups
 
 - The evaluation gap from plans 2–3 is untouched by this. A bigger simulation is

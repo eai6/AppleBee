@@ -210,7 +210,7 @@ numbers Objective 3 rests on.
 
 | SHA | Date | Subject |
 |---|---|---|
-| _pending_ | | |
+| `211ce79` | 2026-08-08 | Diagnose the replication and consolidate model inputs under data/inputs/ |
 
 ## Follow-ups
 

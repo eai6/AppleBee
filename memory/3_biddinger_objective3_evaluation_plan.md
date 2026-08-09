@@ -337,7 +337,7 @@ roughly quadruples marginal R², the only hint that this matters).
 
 | SHA | Date | Subject |
 |---|---|---|
-| _pending_ | | |
+| `e5b2367` | 2026-08-08 | Evaluate Objective 3 on the Biddinger Osmia database |
 
 ## Follow-ups
 
