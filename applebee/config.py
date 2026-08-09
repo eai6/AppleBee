@@ -17,28 +17,43 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ARCHIVES = ROOT / "archives"
 DATA = ROOT / "data"
+INPUTS = DATA / "inputs"
 CACHE = DATA / "cache"
 OUTPUTS = ROOT / "outputs"
 FIGURES = OUTPUTS / "figures"
 TABLES = OUTPUTS / "tables"
 
-# Source data as laid down in the archives tree.
-PA_TMEAN_CSV = ARCHIVES / "output" / "tmean_prism_pennsylvania_data_1990_2023.csv"
-PA_PPT_CSV = ARCHIVES / "output" / "ppt_prism_pennsylvania_data_1990_2023.csv"
-PA_FORAGE_CSV = ARCHIVES / "data" / "forage.csv"
+# Everything the model reads lives under data/inputs/, described file by file in
+# data/inputs/MANIFEST.md. The two Pennsylvania PRISM exports are symlinks into
+# archives/output/ rather than copies -- 2.3 GB is not worth duplicating.
+PA_TMEAN_CSV = INPUTS / "weather" / "pa_tmean_prism_daily.csv"
+PA_PPT_CSV = INPUTS / "weather" / "pa_ppt_prism_daily.csv"
+PA_FORAGE_CSV = INPUTS / "forage" / "pa_forage_spring_lonsdorf.csv"
 
-NY_TMEAN_CSV = ARCHIVES / "output" / "tmean_prism_new_york_data.csv"
-NY_PPT_CSV = ARCHIVES / "output" / "ppt_prism_new_york_data.csv"
-NY_FORAGE_CSV = ARCHIVES / "research" / "data" / "Centrella_Spring_Forage_2015.csv"
-CENTRELLA_CSV = ARCHIVES / "research" / "data" / "Centrella_et_al_Data.csv"
+NY_TMEAN_CSV = INPUTS / "weather" / "ny_tmean_prism_daily.csv"
+NY_PPT_CSV = INPUTS / "weather" / "ny_ppt_prism_daily.csv"
+NY_FORAGE_CSV = INPUTS / "forage" / "ny_forage_spring_2015_sites.csv"
 
-TURLEY_CSV = (
-    ARCHIVES
-    / "Python_scripts"
-    / "data"
-    / "doi_10_5061_dryad_9kd51c5mc__v20220727"
-    / "Turley_et_al_ECOEVO_blue_vane_bee_collection_data.csv"
-)
+CENTRELLA_CSV = INPUTS / "observations" / "centrella_2020_ny_orchards.csv"
+TURLEY_CSV = INPUTS / "observations" / "turley_2022_pa_blue_vane.csv"
+
+# Not yet used by the model; see MANIFEST.md and memory/ plan 3.
+BIDDINGER_XLSX = INPUTS / "observations" / "biddinger_osmia_pa_2007_2025.xlsx"
+
+# Northeast inputs fetched by applebee.acquire (2013-2018). The weather here is
+# a *primary* copy, not a cache: the PRISM rasters were discarded after sampling,
+# so there is nothing local to rebuild it from. It lives outside data/cache/ for
+# that reason -- see data/inputs/weather/northeast/PROVENANCE.json.
+NE_WEATHER_DIR = INPUTS / "weather" / "northeast"
+NE_TMEAN_KEY = "northeast_tmean"
+NE_PPT_KEY = "northeast_ppt"
+NE_FORAGE_CSV = INPUTS / "forage" / "northeast_forage_spring_lonsdorf.csv"
+
+# CONUS, same acquisition path and same caveat: a primary copy, not a cache.
+CONUS_WEATHER_DIR = INPUTS / "weather" / "conus"
+CONUS_TMEAN_KEY = "conus_tmean"
+CONUS_PPT_KEY = "conus_ppt"
+CONUS_FORAGE_CSV = INPUTS / "forage" / "conus_forage_spring_lonsdorf.csv"
 
 # The Adams County, PA monitoring site (Turley et al. 2022). All eight trap
 # locations fall inside one 4 km PRISM cell, so the chapter treats them as a

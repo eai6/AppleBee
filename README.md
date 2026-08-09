@@ -33,9 +33,13 @@ python3 -m venv .venv
 .venv/bin/python scripts/build_cache.py     # parse PRISM CSVs -> cached matrices
 ```
 
-`build_cache.py` reads the ~2.4 GB of wide PRISM CSVs in `archives/output/` once
-and writes float32 matrices to `data/cache/` (~720 MB). Everything downstream
-reads the cache. All input data is already in `archives/` — nothing to download.
+`build_cache.py` reads the ~2.3 GB of wide PRISM CSVs once and writes float32
+matrices to `data/cache/` (~720 MB). Everything downstream reads the cache.
+
+Every input the model reads lives under `data/inputs/`, catalogued file by file
+in [`data/inputs/MANIFEST.md`](data/inputs/MANIFEST.md) — nothing to download.
+The two Pennsylvania PRISM exports there are symlinks into `archives/output/`
+rather than copies, since 2.3 GB cannot be tracked in git.
 
 ## Running
 
@@ -88,9 +92,12 @@ applebee/
   submodels.py   Equations 4.1-4.10 as pure functions
   model.py       lifecycle orchestration over cells and years
   evaluation/    centrella.py (Objective 2), turley.py (Objective 3)
+data/inputs/     every input the model reads, described in MANIFEST.md
+data/cache/      derived PRISM matrices (gitignored, rebuildable)
 scripts/         cache build, simulation, analysis, figures
 tests/           sub-model tests pinned to the chapter's worked examples
-archives/        original exploratory code and all source data (unmodified)
+memory/          session log: plans, and the commits made under each
+archives/        original exploratory code and its source data (unmodified)
 ```
 
 ## Tests
@@ -104,9 +111,18 @@ one extreme day giving 10% egg mortality, five giving 50%, sixty warm
 pre-winter days giving 15% winter mortality — plus the threshold boundary
 conditions, which is where the archived implementation diverged.
 
-## Known gap
+## Known gaps
 
-The Objective 2 evaluation does not reproduce the chapter's absolute R²,
-because the archived Centrella et al. (2020) extract records emerged adults
-rather than the brood-cell counts the chapter describes. See §3 of the
-replication notes.
+Detail and evidence for each of these is in
+[`docs/REPLICATION_NOTES.md`](docs/REPLICATION_NOTES.md).
+
+- **Objective 2 does not reproduce the chapter's absolute R²** (0.41 against
+  0.52). The Centrella et al. (2020) extract records emerged adults, not the
+  brood-cell counts the chapter describes; no derivation available from it gets
+  past R² 0.41. Obtaining the full dataset is the one external dependency.
+- **Objective 3's R² = 0.79 reproduces but does not mean what it appears to.**
+  It is fitted on six observations with a random intercept per year — one
+  observation per group. Fixed effects alone explain 21%, at p = 0.36.
+- **The Sobol parameter ranking disagrees with the chapter's body text** —
+  temperature dominates here, not precipitation. The chapter's own Figure 4-5
+  caption agrees with this replication.

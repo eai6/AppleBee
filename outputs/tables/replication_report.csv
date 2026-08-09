@@ -1,0 +1,41 @@
+objective,metric,chapter,replication,verdict,note
+1. Equations,sub-model tests vs the chapter's worked examples,all pass,25 passed in 0.38s,replicates,
+1. Equations,1 extreme day -> 10% egg mortality,0.1,0.1,replicates,
+1. Equations,5 extreme days -> 50% egg mortality,0.5,0.5,replicates,
+1. Equations,60 warm pre-winter days -> 15% winter mortality,0.15,0.1175,fails,"the [15 Aug, 1 Oct) window is only 47 days, so 60 warm days cannot occur and the ceiling is 11.75% -- see notes section 6"
+1. Equations,foraging period after mating,ambiguous,20 days assumed,consistent,chapter does not say whether the 2 mating days come out of the 22-day longevity; see notes section 5
+2. Egg production,"observed cells, max",206,182.4,fails,"cells = adults / (1 - larval mortality); bounded below by the adult count, so the chapter's minimum is unreachable"
+2. Egg production,"observed cells, mean",65,51.6,fails,"cells = adults / (1 - larval mortality); bounded below by the adult count, so the chapter's minimum is unreachable"
+2. Egg production,"observed cells, min",12,4.0,fails,"cells = adults / (1 - larval mortality); bounded below by the adult count, so the chapter's minimum is unreachable"
+2. Egg production,"observed cells, SD",42,41.2,replicates,"cells = adults / (1 - larval mortality); bounded below by the adult count, so the chapter's minimum is unreachable"
+2. Egg production,"R2, default params",0.52,0.41,fails,response variable absent from the published data
+2. Egg production,"marginal R2, default params",not reported,0.175,consistent,fixed effects only
+2. Egg production,"RMSE, default params",not reported,31.35,consistent,
+2. Egg production,"R2, calibrated params",0.6,0.477,fails,response variable absent from the published data
+2. Egg production,"marginal R2, calibrated params",not reported,0.272,consistent,fixed effects only
+2. Egg production,"RMSE, calibrated params",not reported,29.5,consistent,
+2. Egg production,R2 gain from calibration,0.08,0.068,replicates,the calibration effect replicates
+2. Sobol,"S1, temperature_threshold",0.18,0.649,fails,ranking inverted; precipitation swings mean eggs by only 0.8 over its range against temperature's 4.2
+2. Sobol,"S1, precipitation_threshold",0.38,0.113,fails,ranking inverted; precipitation swings mean eggs by only 0.8 over its range against temperature's 4.2
+2. Sobol,"S1, forage_threshold",0.3,0.098,fails,ranking inverted; precipitation swings mean eggs by only 0.8 over its range against temperature's 4.2
+3. Full model,"R2, default params",0.79,0.803,replicates,reproduces the chapter's reported value
+3. Full model,"RMSE, default params",7.69,7.52,replicates,
+3. Full model,marginal R2 (fixed effects only),not reported,0.212,consistent,diagnostic; pending statistical advice
+3. Full model,"slope p-value, plain OLS on the 6 points",not reported,0.358,consistent,diagnostic; pending statistical advice
+3. Full model,n observations,6,6,replicates,
+3. Full model,"R2, calibrated params",0.77,0.797,replicates,reproduces the chapter's reported value
+3. Full model,"RMSE, calibrated params",8.13,7.63,replicates,
+4. Statewide,cell-years simulated,119232,119232,replicates,
+4. Statewide,"offspring/female, max",30,34.4,consistent,
+4. Statewide,"offspring/female, mean",17,15.44,replicates,17.05 under the alternative foraging-period reading -- notes section 5
+4. Statewide,"offspring/female, min",1,0.0,fails,0.71 under the alternative foraging-period reading
+4. Statewide,"per-cell year-to-year SD, max",9,9.6,replicates,
+4. Statewide,"per-cell year-to-year SD, mean",5,5.3,replicates,
+4. Statewide,"per-cell year-to-year SD, min",2,1.6,replicates,
+4. Statewide,"no-egg days, temperature",6.38,6.63,replicates,
+4. Statewide,"no-egg days, precipitation",4.4,4.44,replicates,
+4. Sub-model importance,Egg Production,98.348,96.598,replicates,ranking and order of magnitude preserved
+4. Sub-model importance,Egg and Larva Mortality,1.596,3.291,replicates,ranking and order of magnitude preserved
+4. Sub-model importance,Winter Mortality,0.054,0.108,replicates,ranking and order of magnitude preserved
+4. Sub-model importance,Julian Emergence Date,0.002,0.002,replicates,ranking and order of magnitude preserved
+4. Statewide,lowest-offspring year,2018,2018,replicates,
