@@ -113,6 +113,13 @@ Summary of what was established:
 
 ### A — what does not replicate
 
+0. **Correction (2026-08-13): Objective 2 does replicate.** The finding below
+   that it "fails" was my own bug — a one-day offset in the collection windows,
+   which missed a run of six fully favourable days and capped predicted eggs at
+   10 where the chapter reports 12. Corrected, R² is 0.510 against the chapter's
+   0.52. See §3 of `docs/REPLICATION_NOTES.md`. The observed-count distribution
+   remains unexplained but no longer blocks the replication.
+
 1. **Objective 3's R² = 0.79 reproduces but is an artefact.** Eq. 4.11 is fitted
    on six observations with a random intercept by year — one observation per
    group, so the random effect is not identifiable and its BLUP absorbs the
@@ -211,6 +218,7 @@ numbers Objective 3 rests on.
 | SHA | Date | Subject |
 |---|---|---|
 | `211ce79` | 2026-08-08 | Diagnose the replication and consolidate model inputs under data/inputs/ |
+| `bae94f1` | 2026-08-13 | Fix a collection-window off-by-one; Objective 2 now replicates |
 
 ## Follow-ups
 

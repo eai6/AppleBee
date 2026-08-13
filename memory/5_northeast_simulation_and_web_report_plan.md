@@ -106,6 +106,7 @@ observations explaining 21% of variance at p = 0.36.
 | SHA | Date | Subject |
 |---|---|---|
 | `8129722` | 2026-08-08 | Simulate the Northeast and the contiguous United States, 2014-2019 |
+| `3ea2cf1` | 2026-08-13 | Repair a half-written day in the CONUS weather cache |
 
 ## Follow-ups
 
