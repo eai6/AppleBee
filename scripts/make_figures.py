@@ -18,7 +18,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from applebee.config import FIGURES, OUTPUTS, PA_TMEAN_CSV
+from applebee.config import FIGURES, OUTPUTS
+from applebee.weather import load_pennsylvania
 from applebee.weather import load_weather
 
 # --- shared style ---------------------------------------------------------
@@ -52,7 +53,7 @@ CELL_DEG = 1.0 / 24.0  # PRISM 4 km grid spacing in degrees
 
 def with_coordinates(results: pd.DataFrame) -> pd.DataFrame:
     """Attach cell centroid lon/lat to simulation output."""
-    cells = load_weather(PA_TMEAN_CSV, "pa_tmean").cells[["col", "row", "lon", "lat"]]
+    cells = load_pennsylvania("tmean").cells[["col", "row", "lon", "lat"]]
     return results.merge(cells, on=["col", "row"], how="left")
 
 
@@ -201,7 +202,7 @@ def _scatter_fit(ax, observed, predicted, xlabel, ylabel, r2, rmse):
 def figure_evaluations() -> None:
     """Objective 2 and Objective 3 evaluation figures (chapter Figs 4-3, 4-7)."""
     from applebee import AppleBee, ForageGrid, ModelParams, load_weather as _lw
-    from applebee.config import PA_FORAGE_CSV, PA_PPT_CSV
+    from applebee.config import PA_FORAGE_CSV
     from applebee.evaluation import centrella, turley
 
     # --- Objective 2: egg production on Centrella et al. (2020) ---
@@ -224,8 +225,8 @@ def figure_evaluations() -> None:
 
     # --- Objective 3: full model on Turley et al. (2022) ---
     model = AppleBee(
-        _lw(PA_TMEAN_CSV, "pa_tmean"),
-        _lw(PA_PPT_CSV, "pa_ppt"),
+        load_pennsylvania("tmean"),
+        load_pennsylvania("ppt"),
         ForageGrid.load(PA_FORAGE_CSV),
         ModelParams(),
     )

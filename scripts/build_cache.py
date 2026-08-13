@@ -10,14 +10,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from applebee.config import NY_PPT_CSV, NY_TMEAN_CSV, PA_PPT_CSV, PA_TMEAN_CSV
+from applebee.config import NY_PPT_CSV, NY_TMEAN_CSV
 from applebee.weather import load_weather
 
 TARGETS = [
+    # Pennsylvania is no longer here: it is stored directly as matrices under
+    # data/inputs/weather/pennsylvania/ and needs no parsing step. Only the small
+    # New York export still arrives as wide CSV.
     ("ny_tmean", NY_TMEAN_CSV),
     ("ny_ppt", NY_PPT_CSV),
-    ("pa_tmean", PA_TMEAN_CSV),
-    ("pa_ppt", PA_PPT_CSV),
 ]
 
 

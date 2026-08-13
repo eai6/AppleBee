@@ -14,40 +14,54 @@ Nothing in this folder is derived. Derived artefacts live in `data/cache/`
 ```
 data/inputs/
   weather/       daily PRISM temperature and precipitation, 4 km grid
-  forage/        Lonsdorf spring floral resource index
+    pennsylvania/  new_york/  northeast/  conus/
+  forage/        Lonsdorf spring floral resource index, by region
   observations/  field datasets the model is evaluated against
 ```
+
+Nothing here depends on `archives/`. Files too large for git carry a
+`PROVENANCE.json` alongside — source, coverage, validation and a SHA-256 per
+file — and those records *are* tracked, so integrity is checkable and a rebuild
+is documented even where the bytes cannot be committed.
 
 ---
 
 ## weather/
 
-PRISM daily 4 km climate grids (prism.oregonstate.edu), exported "wide": one row
-per grid cell, one column per day, column names like
-`PRISM_tmean_stable_4kmD2_20150501_bil`. Read by `applebee/weather.py`.
+Daily PRISM 4 km temperature and precipitation, grouped by region. Large extents
+are stored as **float32 matrices** (`{key}.values.npy` + `.dates.npy` +
+`.cells.parquet`), read with `applebee.weather.load_matrices`; small ones stay as
+the source CSV, read with `load_weather`.
 
-| File | Cells | Days | Coverage | Notes |
-|---|---|---|---|---|
-| `pa_tmean_prism_daily.csv` | 7,452 | 12,601 | 1990-01-01 – 2024-07-01 | **symlink**, 1.5 G |
-| `pa_ppt_prism_daily.csv` | 7,452 | 12,601 | 1990-01-01 – 2024-07-01 | **symlink**, 805 M |
-| `ny_tmean_prism_daily.csv` | 17 | 61 | 2015-05-01 – 2015-06-30 | 17 Centrella sites |
-| `ny_ppt_prism_daily.csv` | 17 | 61 | 2015-05-01 – 2015-06-30 | 17 Centrella sites |
+| Region | Form | Cells | Days | Coverage | Size |
+|---|---|---|---|---|---|
+| `pennsylvania/` | matrices | 7,452 | 12,601 | 1990-01-01 – 2024-07-01 | 716 MB |
+| `new_york/` | CSV | 17 sites | 61 | 2015-05-01 – 2015-06-30 | 40 KB |
+| `northeast/` | matrices | 102,555 | 2,191 | 2013-01-01 – 2018-12-31 | 1.7 GB |
+| `conus/` | matrices | 481,631 | 2,191 | 2013-01-01 – 2018-12-31 | 8.4 GB |
 
-No missing values in any of the four.
+Every region carries a `PROVENANCE.json` recording its source, coverage,
+validation and a SHA-256 per file. Those are tracked in git; the matrices are not.
 
-**The two Pennsylvania files are symlinks into `archives/output/`, not copies.**
-At 2.3 GB combined they cannot be tracked in git, and a 12,601-column CSV is not
-something to review by eye — the reviewable form is the cache built from them.
-The symlinks are listed in `.gitignore`; a fresh clone must restore
-`archives/output/` before the statewide simulation will run.
+**Pennsylvania was converted from CSV to matrices** so that `data/inputs/` no
+longer depends on `archives/`, which is excluded from git. It previously appeared
+here as two symlinks into `archives/output/`, which dangle in a fresh clone. The
+conversion is lossless — verified **max difference 0.0, 100.0000% exactly equal**
+against the original export — and takes 2.45 GB of wide CSV down to 716 MB. The
+raw CSVs remain in `archives/output/` for anyone who wants them.
 
-Columns used: `col`, `row` (grid index — the model's cell key), `lon`, `lat`,
-`Site` (New York only), and every column carrying an 8-digit date stamp.
+Read it with:
 
-Column order in the source is **not** chronological, and some days appear twice
-under different PRISM release tags (`early`, `provisional`, `stable`). The loader
-sorts by date and keeps the most quality-controlled release of each duplicated
-day — see `applebee/weather.py:34`.
+```python
+from applebee.weather import load_pennsylvania, load_matrices
+tmean = load_pennsylvania("tmean")                     # Pennsylvania
+conus = load_matrices(CONUS_WEATHER_DIR, "conus_ppt")  # any other region
+```
+
+Column order in the source CSVs is **not** chronological, and some days appear
+twice under different PRISM release tags (`early`, `provisional`, `stable`). The
+parser sorts by date and keeps the most quality-controlled release of each
+duplicated day — see `applebee/weather.py:34`.
 
 ## forage/
 
@@ -109,47 +123,6 @@ Extension Center, Adams County PA, weekly April–October.
 26,716 specimen rows, 2014–2019, 30 genera. **183 are *Osmia*** — the model's
 response is the annual count of those, six numbers in total.
 
-### `biddinger_osmia_pa_2007_2025.xlsx` — Objective 3b
-
-Biddinger bee database, *Osmia* extract (sheet "Edward, Osmia"). 1,499 identified
-specimen records over 2007–2025, from 62 named farms across five collection
-programs (NRCS 500, ICP 279, SCRI 227, misc 343, RAMP 150). Read by
-`applebee/evaluation/biddinger.py`.
-
-**Taxonomy — one genus.** Every record is *Osmia* (Megachilidae), across six
-species: *pumila* 546, ***cornifrons* 517**, *bucephala* 231, *taurus* 165,
-*georgica* 21, *lignaria* 19. Three rows carry no determination and are dropped.
-
-Because no other genus is present, catch cannot be expressed as a share of total
-bee catch — the usual way round unknown trapping effort is unavailable here.
-
-**Locations — two clusters, one negligible.** All Pennsylvania: 1,488 records
-from **Adams County**, 11 from **Centre County**, 105 km apart. The 40 distinct
-block coordinates fall into 11 PRISM 4 km cells; the nine Adams cells sit inside
-a 22 × 22 km box centred on the Penn State Fruit Research and Extension Center.
-The two Centre County cells hold 11 specimens from 2007–2008 and fall outside
-every analysis window.
-
-The three cells carrying the primary panel — (1145, 239), (1146, 239) and
-(1146, 240), 4–8 km apart — have daily temperatures correlating at r > 0.999, so
-the panel is spatially replicated in name more than in signal. See §2b of
-`docs/REPLICATION_NOTES.md` for what that does to the evaluation.
-
-**Fields used:** `ID` (specimen, `DJB YYYY-NNNN`), `Year`, `genus`, `species`,
-`farm`, `program`, `trap.type`, `Date set trap`, `Lat.Block(DD)` /
-`Long.Block(DD)` (text, degree-suffixed), with `lat.trap` / `long.trap` as a
-dirtier fallback — 1,108 non-null but containing zeros and a sign-flipped
-longitude.
-
-**Known defects:** one duplicated specimen ID (`DJB 2024-02023`, two
-*O. bucephala* from different farms on different dates — both kept, surfaced via
-`BiddingerData.duplicate_ids`); one `Year` recorded as the string `Unkn`; trap
-type switches from pan to blue vane at 2012 with no overlap.
-
-**It overlaps Turley without containing it** — 143 shared specimen IDs, 40
-Turley-only, 369 Biddinger-only in 2014–2019. The loader takes the union on ID;
-concatenating the two would double-count 143 bees.
-
 ---
 
 ---
@@ -207,9 +180,10 @@ Year-to-year stability runs r = 0.992–0.995 with mean absolute change 0.007–
 
 | Module | Reads |
 |---|---|
-| `applebee/weather.py` | all four `weather/` files |
-| `applebee/forage.py` | `forage/pa_forage_spring_lonsdorf.csv` |
-| `applebee/evaluation/centrella.py` | NY weather, NY forage, Centrella observations |
-| `applebee/evaluation/turley.py` | Turley observations (+ the model over PA weather/forage) |
+| `applebee/weather.py` | `load_pennsylvania()` for `weather/pennsylvania/`; `load_matrices()` for `northeast/`, `conus/`; `load_weather()` for the New York CSVs |
+| `applebee/forage.py` | any `forage/*_forage_spring_lonsdorf.csv` |
+| `applebee/evaluation/centrella.py` | New York weather and forage, Centrella observations |
+| `applebee/evaluation/turley.py` | Turley observations (+ the model over Pennsylvania) |
+| `applebee/acquire/` | writes `weather/{region}/` and `forage/{region}_*.csv` |
 
 Paths are declared in `applebee/config.py`.

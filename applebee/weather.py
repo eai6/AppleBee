@@ -182,6 +182,21 @@ def load_matrices(directory: Path, key: str) -> WeatherGrid:
     )
 
 
+def load_pennsylvania(variable: str = "tmean") -> WeatherGrid:
+    """The Pennsylvania grid, 7,452 cells x 1990-2024.
+
+    Stored as float32 matrices under ``data/inputs/weather/pennsylvania/`` rather
+    than as the 2.45 GB of wide PRISM CSV they were parsed from. Same values,
+    a third of the size, and no dependency on ``archives/``.
+    """
+    from .config import PA_PPT_KEY, PA_TMEAN_KEY, PA_WEATHER_DIR
+
+    keys = {"tmean": PA_TMEAN_KEY, "ppt": PA_PPT_KEY}
+    if variable not in keys:
+        raise ValueError(f"variable must be 'tmean' or 'ppt', got {variable!r}")
+    return load_matrices(PA_WEATHER_DIR, keys[variable])
+
+
 def load_weather(
     path: Path,
     cache_key: str | None = None,

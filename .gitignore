@@ -26,7 +26,8 @@ archives/research/data/prism_4km_mesh
 # two-fetches-per-file-per-24-hours limit. See its PROVENANCE.json.
 data/cache/
 
-# Acquired weather matrices: too large for git (Northeast 1.7 GB, CONUS 8.4 GB)
+# Weather matrices: too large for git (Pennsylvania 716 MB, Northeast 1.7 GB,
+# CONUS 8.4 GB)
 # but irreplaceable without re-downloading. Kept out of data/cache/ deliberately
 # so a "clear the cache" never destroys them. PROVENANCE.json beside each records
 # the source, coverage and a SHA-256 per file, and IS tracked.
@@ -42,11 +43,9 @@ data/inputs/forage/conus_forage_spring_lonsdorf.csv
 data/inputs/forage/*_forage_by_year/
 data/inputs/forage/_backup_state_mosaic/
 
-# The two PA PRISM exports under data/inputs/weather/ are symlinks into
-# archives/output/ (2.3 GB, untrackable). Committing the links would leave a
-# clone with dangling paths; see data/inputs/MANIFEST.md.
-data/inputs/weather/pa_tmean_prism_daily.csv
-data/inputs/weather/pa_ppt_prism_daily.csv
+# Weather is grouped by region under data/inputs/weather/. The matrices are
+# excluded by the rule above; the small New York CSVs and every PROVENANCE.json
+# stay tracked.
 
 # data/raw/ is the drop box for new source files before they are described in
 # data/inputs/MANIFEST.md and moved into data/inputs/.

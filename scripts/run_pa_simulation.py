@@ -15,7 +15,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import pandas as pd
 
 from applebee import AppleBee, ForageGrid, ModelParams, load_weather
-from applebee.config import OUTPUTS, PA_FORAGE_CSV, PA_PPT_CSV, PA_TMEAN_CSV
+from applebee.config import OUTPUTS, PA_FORAGE_CSV
+from applebee.weather import load_pennsylvania
 
 FIRST_WEATHER_YEAR = 2008
 LAST_WEATHER_YEAR = 2023
@@ -39,8 +40,8 @@ def main() -> None:
     params = ModelParams() if args.params == "default" else ModelParams.calibrated()
 
     print("loading inputs...", flush=True)
-    tmean = load_weather(PA_TMEAN_CSV, "pa_tmean")
-    ppt = load_weather(PA_PPT_CSV, "pa_ppt")
+    tmean = load_pennsylvania("tmean")
+    ppt = load_pennsylvania("ppt")
     forage = ForageGrid.load(PA_FORAGE_CSV)
 
     # Only cells present in both the weather grid and the forage grid.

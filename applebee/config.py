@@ -24,21 +24,25 @@ FIGURES = OUTPUTS / "figures"
 TABLES = OUTPUTS / "tables"
 
 # Everything the model reads lives under data/inputs/, described file by file in
-# data/inputs/MANIFEST.md. The two Pennsylvania PRISM exports are symlinks into
-# archives/output/ rather than copies -- 2.3 GB is not worth duplicating.
-PA_TMEAN_CSV = INPUTS / "weather" / "pa_tmean_prism_daily.csv"
-PA_PPT_CSV = INPUTS / "weather" / "pa_ppt_prism_daily.csv"
+# data/inputs/MANIFEST.md. Weather is grouped by region; each region holds either
+# the source CSVs (small extents) or float32 matrices (large ones).
+#
+# Pennsylvania is stored as matrices rather than the 2.45 GB of wide PRISM CSV it
+# was parsed from. The matrices are the same float32 values -- parsing is lossless
+# -- at a third of the size, and they make data/inputs/ self-contained. The CSVs
+# remain in archives/output/ for anyone who wants the raw export.
+PA_WEATHER_DIR = INPUTS / "weather" / "pennsylvania"
+PA_TMEAN_KEY = "pa_tmean"
+PA_PPT_KEY = "pa_ppt"
 PA_FORAGE_CSV = INPUTS / "forage" / "pa_forage_spring_lonsdorf.csv"
 
-NY_TMEAN_CSV = INPUTS / "weather" / "ny_tmean_prism_daily.csv"
-NY_PPT_CSV = INPUTS / "weather" / "ny_ppt_prism_daily.csv"
+NY_WEATHER_DIR = INPUTS / "weather" / "new_york"
+NY_TMEAN_CSV = NY_WEATHER_DIR / "ny_tmean_prism_daily.csv"
+NY_PPT_CSV = NY_WEATHER_DIR / "ny_ppt_prism_daily.csv"
 NY_FORAGE_CSV = INPUTS / "forage" / "ny_forage_spring_2015_sites.csv"
 
 CENTRELLA_CSV = INPUTS / "observations" / "centrella_2020_ny_orchards.csv"
 TURLEY_CSV = INPUTS / "observations" / "turley_2022_pa_blue_vane.csv"
-
-# Not yet used by the model; see MANIFEST.md and memory/ plan 3.
-BIDDINGER_XLSX = INPUTS / "observations" / "biddinger_osmia_pa_2007_2025.xlsx"
 
 # Northeast inputs fetched by applebee.acquire (2013-2018). The weather here is
 # a *primary* copy, not a cache: the PRISM rasters were discarded after sampling,

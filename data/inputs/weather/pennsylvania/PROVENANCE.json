@@ -1,0 +1,43 @@
+{
+  "dataset": "PRISM daily 4 km, Pennsylvania",
+  "source": "archives/output/{tmean,ppt}_prism_pennsylvania_data_1990_2023.csv",
+  "provenance": "the wide PRISM exports used by the original dissertation, parsed once into float32 matrices; parsing is lossless",
+  "variables": [
+    "tmean",
+    "ppt"
+  ],
+  "period": "1990-01-01..2024-07-01",
+  "days": 12601,
+  "cells": 7452,
+  "grid": "PRISM 4 km CONUS, origin (-125.0208333, 49.9375), 1/24 degree",
+  "why_matrices": "2.45 GB of wide CSV became 716 MB of float32 with no loss, and data/inputs/ no longer depends on archives/, which is not in git",
+  "verified": "identical to the source CSV: max |difference| 0.0, 100.0000% exactly equal",
+  "rebuildable_locally": true,
+  "rebuild": "load_weather(archives/output/...csv, cache_key='pa_tmean') then move the three cache files here",
+  "files": {
+    "pa_ppt.cells.parquet": {
+      "bytes": 6732,
+      "sha256": "23478f3423402071604173790a9d26be1dbf0250e2be12c02586bf43499ebc9c"
+    },
+    "pa_ppt.dates.npy": {
+      "bytes": 100936,
+      "sha256": "5edd1be73408c1c56709de44630f30d357f2704e85069977dc6d8bca6ba7bf81"
+    },
+    "pa_ppt.values.npy": {
+      "bytes": 375610736,
+      "sha256": "84698eae48964b018f28db30d6502bb9629f9bcc4665d99b8e55351370a3e235"
+    },
+    "pa_tmean.cells.parquet": {
+      "bytes": 6732,
+      "sha256": "23478f3423402071604173790a9d26be1dbf0250e2be12c02586bf43499ebc9c"
+    },
+    "pa_tmean.dates.npy": {
+      "bytes": 100936,
+      "sha256": "5edd1be73408c1c56709de44630f30d357f2704e85069977dc6d8bca6ba7bf81"
+    },
+    "pa_tmean.values.npy": {
+      "bytes": 375610736,
+      "sha256": "1fa6c2e2ef6209d3272477027d849a2ff1d5f0a33cf3f680f6ec7d69aa5b982a"
+    }
+  }
+}
