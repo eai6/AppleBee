@@ -40,7 +40,16 @@
     },
     "conus_tmean.values.npy": {
       "bytes": 4221014212,
-      "sha256": "0fe7758d96d94f5bb4896a8a3a0ac8fa8dc9a46b71b7207cffcac4103487a16c"
+      "sha256": "480c5c03a4f11a252c929bb23659b83ab472f9ae63846981607e1ad240460374"
     }
-  }
+  },
+  "repairs": [
+    {
+      "date": "2026-08-13",
+      "what": "conus_tmean 2013-02-06 had 102,559 NaN cells south of 34.5N",
+      "cause": "the column was half written when an earlier run was interrupted; the resume check sampled only two rows and declared the day complete",
+      "fix": "day re-fetched and the column rewritten; resume now verifies every cell in a column (tests/test_acquire.py)",
+      "verified": "0 NaN in the array; re-validated at 100.0000% exactly equal to the archived Pennsylvania export including the repaired day"
+    }
+  ]
 }

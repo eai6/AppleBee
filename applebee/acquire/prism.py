@@ -420,10 +420,15 @@ def fetch_and_sample(
         try:
             existing = np.lib.format.open_memmap(values_path, mode="r")
             if existing.shape == shape:
-                # A day already written has finite values; anything else is
-                # unwritten. This is what makes a multi-hour fetch resumable
-                # even when the rasters were discarded as it went.
-                resume = np.isfinite(existing[0, :]) | np.isfinite(existing[len(cells) // 2, :])
+                # A day counts as written only if EVERY cell in its column is
+                # finite. Sampling a couple of rows is not enough: an interrupted
+                # run can leave a column half written -- the north populated and
+                # the south still NaN -- and a two-row check declares that day
+                # complete, silently baking a horizontal band of missing data
+                # into the cache. That happened once; hence the full scan.
+                resume = np.zeros(len(days), dtype=bool)
+                for j in range(len(days)):
+                    resume[j] = bool(np.isfinite(existing[:, j]).all())
                 del existing
                 values = np.lib.format.open_memmap(values_path, mode="r+")
                 print(f"  resuming: {int(resume.sum()):,} of {len(days):,} days already written",

@@ -228,3 +228,26 @@ def test_national_cdl_url_is_well_formed():
     url = cdl.NATIONAL_URL.format(year=2018)
     assert url.endswith("2018_30m_cdls.zip")
     assert "nass.usda.gov" in url
+
+
+def test_resume_requires_a_fully_written_column(tmp_path):
+    # A half-written day must be re-fetched, not skipped. Checking only a couple
+    # of rows once let a partially flushed column through and put a horizontal
+    # band of missing data across the southern third of the CONUS cache.
+    import numpy as np
+    from applebee.acquire import prism
+
+    cells = pd.DataFrame({"col": [0, 1, 2, 3], "row": [0, 1, 2, 3],
+                          "lon": [-100.0] * 4, "lat": [40.0] * 4})
+    days = pd.date_range("2020-01-01", periods=3)
+    path = tmp_path / "probe.values.npy"
+    a = np.lib.format.open_memmap(path, mode="w+", dtype="float32",
+                                  shape=(len(cells), len(days)))
+    a[:] = np.nan
+    a[:, 0] = 1.0          # complete
+    a[0, 1] = 1.0          # first row only -- the failure mode
+    a.flush(); del a
+
+    existing = np.load(path, mmap_mode="r")
+    complete = np.array([bool(np.isfinite(existing[:, j]).all()) for j in range(len(days))])
+    assert complete.tolist() == [True, False, False]
