@@ -75,6 +75,6 @@ Rules:
 |---|---|---|
 | 1 | [1_memory_folder_setup_plan.md](1_memory_folder_setup_plan.md) | Establish this session-tracking folder |
 | 2 | [2_replication_diagnosis_and_data_organisation_plan.md](2_replication_diagnosis_and_data_organisation_plan.md) | Pin down what does not replicate and why; consolidate simulation inputs under `data/` |
-| 3 | [3_biddinger_objective3_evaluation_plan.md](3_biddinger_objective3_evaluation_plan.md) | Rebuild Objective 3 on the Biddinger database so its R² measures the model, not a random intercept |
+| 3 | [3_biddinger_objective3_evaluation_plan.md](3_biddinger_objective3_evaluation_plan.md) | *(withdrawn)* Rebuild Objective 3 on the Biddinger database — data and code removed 2026-08-13 |
 | 4 | [4_data_acquisition_pipeline_plan.md](4_data_acquisition_pipeline_plan.md) | Build PRISM and CDL→forage acquisition pipelines so the simulation extent is not fixed to Pennsylvania |
 | 5 | [5_northeast_simulation_and_web_report_plan.md](5_northeast_simulation_and_web_report_plan.md) | Run AppleBee across the Northeast on the acquired inputs; publish a web report |

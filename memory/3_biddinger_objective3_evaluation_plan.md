@@ -1,4 +1,14 @@
-# 3 — Objective 3 rebuilt on the Biddinger database
+# 3 — Objective 3 rebuilt on the Biddinger database  *(WITHDRAWN)*
+
+> **Withdrawn 2026-08-13**, at the author's direction: the Biddinger data and the
+> code built on it are removed from the repository, leaving Centrella and Turley
+> as the only observation datasets. This plan is kept as the record of what was
+> done and found — the files are recoverable from git history at `e5b2367`.
+>
+> The finding worth carrying forward is in §2b of `docs/REPLICATION_NOTES.md`:
+> reconstructing Turley's own eight-farm sampling frame reproduced his published
+> counts at r = 0.963, and the same frame over 13 years showed no detectable
+> relationship.
 
 **Date:** 2026-08-05
 **Purpose:** Replace the six-point Turley evaluation of the full AppleBee model

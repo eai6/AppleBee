@@ -32,10 +32,9 @@ from applebee import AppleBee, ForageGrid, ModelParams, load_weather  # noqa: E4
 from applebee.config import (  # noqa: E402
     OUTPUTS,
     PA_FORAGE_CSV,
-    PA_PPT_CSV,
-    PA_TMEAN_CSV,
     TABLES,
 )
+from applebee.weather import load_pennsylvania  # noqa: E402
 from applebee.evaluation import centrella as C  # noqa: E402
 from applebee.evaluation import turley as T  # noqa: E402
 
@@ -260,8 +259,8 @@ def objective_4() -> list[dict]:
 
 
 def main() -> None:
-    tmean = load_weather(PA_TMEAN_CSV, "pa_tmean")
-    ppt = load_weather(PA_PPT_CSV, "pa_ppt")
+    tmean = load_pennsylvania("tmean")
+    ppt = load_pennsylvania("ppt")
     model = AppleBee(tmean, ppt, ForageGrid.load(PA_FORAGE_CSV), ModelParams())
 
     report = pd.DataFrame(

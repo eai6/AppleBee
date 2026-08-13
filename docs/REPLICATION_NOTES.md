@@ -20,7 +20,6 @@ Nothing needed to be downloaded.
 | 2 — Sobol ranking | precipitation most sensitive | temperature most sensitive | **fails** — precipitation cannot be most sensitive over the Table 4-5 ranges, and the chapter contradicts itself (§4) |
 | 3 — full model vs Turley | R² 0.79, RMSE 7.69 | **0.803, RMSE 7.52** | **replicates** |
 | 3 — calibrated params | R² 0.77, RMSE 8.13 | 0.797, RMSE 7.63 | **replicates** |
-| 3b — full model vs Biddinger, larger panel | — | marginal R² 0.02–0.08, slope negative | open — see §2b |
 | 4 — statewide simulation | mean 17, min 1 | 15.4, 0.0 | **reconciled** by one reading of the foraging period (§5) |
 | 4 — no-egg days, RF importance | 6.38 / 4.40; egg production dominant | 6.63 / 4.44; same ranking | **replicates** |
 | 4 — spatial and temporal pattern | forested north high, 2018 the minimum | same | **replicates** |
@@ -110,283 +109,24 @@ The same decomposition on Objective 2, where the random effect *is* identifiable
 (51 observations, 17 sites × 3 time points): marginal R² 0.175, conditional
 0.410. Less extreme, but the reported figure is still mostly the site intercept.
 
-**This motivates adding the Biddinger database** (1,499 *Osmia*
-records, 2007–2025, 63 farms) — it replaces six points with enough data for the
-evaluation to mean something. That evaluation is now built; see §2b.
+A panel with genuine replication would settle it — many observations per group,
+so the variance components are separable. See §2b.
 
 ---
 
-## 2b. Objective 3 on the Biddinger database — a panel with replication
+## 2b. Withdrawn — the Biddinger evaluation
 
-`applebee/evaluation/biddinger.py`, run by `scripts/run_biddinger_evaluation.py`.
+An evaluation of Objective 3 against a larger *Osmia* specimen database was built
+and then withdrawn from this repository (2026-08-13, at the author's direction).
+The data, module, tests and outputs are removed; the work remains in git history
+at `e5b2367` and in `memory/3_biddinger_objective3_evaluation_plan.md`.
 
-The Biddinger *Osmia* extract covers 2007–2025 across **11 PRISM cells** rather
-than 2014–2019 across one, which is what makes a defensible fit possible: with
-many years per cell, a random intercept **by cell** is identifiable.
-
-### What the extract contains
-
-**One genus.** All 1,499 identified records are *Osmia* (Megachilidae), across
-six species: *pumila* 546, ***cornifrons* 517**, *bucephala* 231, *taurus* 165,
-*georgica* 21, *lignaria* 19. Three rows carry no determination.
-
-This has a consequence worth stating plainly: because no other genus is present,
-**catch cannot be normalised against total bee catch**. That standard escape from
-unknown trapping effort — express *Osmia* as a share of everything caught — is
-not available here. Turley's dataset does carry all 30 genera, but only for
-2014–2019 at one site.
-
-**Two locations, one of them negligible.** All records are Pennsylvania: 1,488
-from **Adams County** and 11 from **Centre County**, 105 km apart.
-
-| Cell | County | lat, lon | n | farms | years | species |
-|---|---|---|---|---|---|---|
-| (1145, 239) | Adams | 39.948, −77.293 | 490 | 20 | 2007–2025 | 6 |
-| (1146, 239) | Adams | 39.946, −77.258 | 306 | 13 | 2008–2023 | 6 |
-| (1146, 240) | Adams | 39.937, −77.250 | 190 | 8 | 2011–2025 | 6 |
-| (1149, 237) | Adams | 40.045, −77.134 | 186 | 6 | 2007–2018 | 6 |
-| (1144, 239) | Adams | 39.976, −77.322 | 115 | 6 | 2008–2025 | 5 |
-| (1148, 237) | Adams | 40.042, −77.172 | 90 | 1 | 2015–2017 | 4 |
-| (1145, 238) | Adams | 40.001, −77.283 | 46 | 4 | 2007–2013 | 6 |
-| (1144, 240) | Adams | 39.900, −77.352 | 39 | 1 | 2011–2014 | 5 |
-| (1143, 241) | Adams | 39.869, −77.371 | 19 | 4 | 2009–2012 | 2 |
-| (1130, 219) | Centre | 40.780, −77.898 | 8 | 2 | 2007–2008 | 2 |
-| (1131, 220) | Centre | 40.756, −77.876 | 3 | 1 | 2007–2008 | 3 |
-
-62 named farms in total, at 40 distinct block coordinates. The nine Adams cells
-sit inside a **22 × 22 km** box centred on the Penn State Fruit Research and
-Extension Center; the two Centre County cells hold 11 specimens from 2007–2008
-and drop out of every analysis window.
-
-### The "spatial" dimension is thinner than the cell count suggests
-
-The cell count makes the panel look spatially replicated. In terms of what the
-model can *see*, it is not.
-
-Daily mean temperature across the three primary cells correlates at
-**r = 0.9995–0.9999** — they are 4–8 km apart, so PRISM gives them effectively
-the same weather. Every cell therefore receives the same emergence date, the same
-favourable-day count and the same mortality, to within rounding.
-
-The entire between-cell difference in predicted offspring comes from **one binary
-flag**: whether the forage index clears `L_H = 0.5`, which sets 2 eggs/day against
-1. And the cell that clears it does so by a hair:
-
-| Year | (1145, 239) | (1146, 239) | (1146, 240) |
-|---|---|---|---|
-| 2012 | 0.544 → **2/day** | 0.450 → 1/day | 0.403 → 1/day |
-| 2015 | 0.516 → **2/day** | 0.409 → 1/day | 0.406 → 1/day |
-| 2019 | 0.509 → **2/day** | 0.403 → 1/day | 0.406 → 1/day |
-| 2021 | 0.494 → 1/day | 0.406 → 1/day | 0.406 → 1/day |
-| 2022 | 0.497 → 1/day | 0.400 → 1/day | 0.406 → 1/day |
-| 2023 | 0.500 → **2/day** | 0.409 → 1/day | 0.400 → 1/day |
-
-(1145, 239) averages 0.514 against 0.417 and 0.406 for the others, and straddles
-the threshold — it flips to 1 egg/day in 2021 and 2022, and in 2023 sits exactly
-on 0.500. So Objective 3b is **still fundamentally a temporal test**, with a
-factor-of-two multiplier applied to one of three cells by a step function whose
-input moves by 0.05 across the whole panel.
-
-This does not change the null result — it explains why the cell random effect
-absorbs so little (conditional R² equals marginal R² to four decimals for the
-genus fit) and it means the identifiability gain is real while the spatial
-information gain is small. A genuine spatial test needs cells far enough apart to
-have different weather.
-
-Three properties of the source constrain the design.
-
-- **It is a specimen database, not a survey.** Only bees that were caught are
-  recorded, so a cell-year with no rows may mean "sampled, caught nothing" or
-  "not sampled". Trap-level effort records are not available, so effort is held
-  constant by *restriction* — blue vane only, cells sampled continuously —
-  rather than modelled away.
-- **Trap type changes.** Pan traps run 2007–2011 (180 records), blue vane
-  2012–2025 (1,056), with no overlap. Mixing them confounds trap type with year.
-- **It overlaps Turley without containing it.** Both use the `DJB YYYY-NNNN`
-  scheme, but 40 of Turley's 183 *Osmia* are absent here and 369 of these are
-  absent from Turley. They are merged on specimen ID — concatenating them would
-  double-count 143 bees.
-
-The primary panel is blue vane at the three continuously sampled cells
-(1145, 239), (1146, 239) and (1146, 240), giving **37 cell-years against the
-chapter's 6**:
-
-| Response | n | cells | marginal R² | conditional R² | slope | p |
-|---|---|---|---|---|---|---|
-| *Osmia* genus (as the chapter counts) | 37 | 3 | **0.008** | 0.008 | −0.219 | 0.54 |
-| *O. cornifrons* alone | 37 | 3 | **0.035** | 0.095 | −0.182 | 0.44 |
-| Turley 2014–2019 (chapter Objective 3) | 6 | 1 | 0.212 | 0.803 | +1.994 | 0.001 |
-
-**AppleBee's predicted offspring has no detectable relationship with observed
-*Osmia* abundance, and the slope is negative.** This is not an artefact of one
-restriction choice — it holds across all eight variants of species, cell set and
-ambiguous-zero rule:
-
-| Response | cells | zeros | n | marginal R² | slope | p |
-|---|---|---|---|---|---|---|
-| genus | 3 continuous | drop ambiguous | 37 | 0.008 | −0.219 | 0.54 |
-| genus | 3 continuous | keep as zero | 39 | 0.008 | −0.219 | 0.58 |
-| genus | all sampled | drop ambiguous | 52 | 0.015 | −0.383 | 0.39 |
-| genus | all sampled | keep as zero | 143 | 0.020 | −0.172 | 0.37 |
-| cornifrons | 3 continuous | drop ambiguous | 37 | 0.035 | −0.182 | 0.44 |
-| cornifrons | 3 continuous | keep as zero | 39 | 0.034 | −0.178 | 0.46 |
-| cornifrons | all sampled | drop ambiguous | 52 | 0.084 | −0.341 | 0.09 |
-| cornifrons | all sampled | keep as zero | 143 | 0.039 | −0.113 | 0.16 |
-
-Marginal R² never exceeds 0.084 and the slope is negative in every one.
-
-The cleanest single check is **Turley's own cell, extended from 6 years to 13**.
-Same site, same trap type, same response — only more years:
-
-| | n | r | R² | p |
-|---|---|---|---|---|
-| 2014–2019, Turley's curation (the chapter) | 6 | +0.46 | 0.212 | 0.36 |
-| 2014–2019, merged curation of the same specimens | 6 | +0.31 | 0.098 | 0.55 |
-| **2012–2024, merged** | **13** | **−0.25** | **0.062** | **0.41** |
-
-The original correlation does not survive either more years *or* a different
-curation of the same six years. Pooling to statewide annual means gives the same
-answer: r = −0.14 (p = 0.65) over 13 years, and +0.12 (p = 0.70) with the 2024
-spike removed.
-
-### The decisive design: Turley's own sampling frame, extended to 13 years
-
-Turley et al. trapped at exactly **eight farms** across four blocks — the four
-FREC Rouzer plots, FREC pears, Pulig-Cherryvale, and Scott Slaybaugh North and
-South. All eight are present in the Biddinger database. Restricting the merged
-record to those eight farms and to blue vane reproduces Turley's sampling frame
-exactly, and then runs it for 13 years instead of 6.
-
-**The reconstruction validates against the published series.** Over the 2014–2019
-overlap it correlates with Turley's own annual *Osmia* counts at **r = 0.963**,
-matching exactly in three of the six years:
-
-| Year | reconstructed | Turley published |
-|---|---|---|
-| 2014 | 19 | 10 |
-| 2015 | **58** | **58** |
-| 2016 | 58 | 47 |
-| 2017 | 33 | 26 |
-| 2018 | **27** | **27** |
-| 2019 | **15** | **15** |
-
-So the frame is right. Extending it:
-
-| Year | *Osmia* | *cornifrons* | farms active | predicted |
-|---|---|---|---|---|
-| 2012 | 4 | 0 | 3 | 14.56 |
-| 2013 | 5 | 1 | 3 | 8.86 |
-| 2014 | 19 | 0 | 7 | 11.57 |
-| 2015 | 58 | 26 | 7 | 14.08 |
-| 2016 | 58 | 16 | 8 | 14.32 |
-| 2017 | 33 | 10 | 8 | **2.72** |
-| 2018 | 27 | 4 | 8 | **3.00** |
-| 2019 | 15 | 5 | 5 | 12.43 |
-| 2020 | 17 | 11 | 4 | 10.94 |
-| 2021 | 21 | 11 | 6 | 15.60 |
-| 2022 | 39 | 34 | 6 | 5.71 |
-| 2023 | 20 | 3 | 6 | 9.84 |
-| 2024 | 89 | 31 | 6 | 5.95 |
-
-| Treatment | n | r | R² | p |
-|---|---|---|---|---|
-| *Osmia*, prediction at Turley's cell | 13 | −0.121 | 0.015 | 0.69 |
-| *Osmia*, prediction averaged over the 3 cells | 13 | −0.191 | 0.037 | 0.53 |
-| *cornifrons* | 13 | −0.175 | 0.031 | 0.57 |
-| *Osmia*, excluding the 2024 spike | 12 | **+0.005** | 0.000 | 0.99 |
-| *Osmia* per active farm (effort-normalised) | 13 | −0.185 | 0.034 | 0.54 |
-| *Osmia*, well-sampled years only (≥6 of 8 farms) | 9 | **−0.036** | 0.001 | 0.93 |
-| Spearman rank, *Osmia* | 13 | −0.245 | — | 0.42 |
-
-**Every treatment converges on zero**, including the two that address the obvious
-objections: normalising by the number of active farms, and dropping the
-thinly-sampled years. Sampling effort is not itself correlated with the
-prediction (farms active vs predicted: r = −0.31, p = 0.30), so the null is not
-an effort artefact.
-
-The chapter's 2017 and 2018 remain the sharpest contradiction. They carry the two
-lowest predicted values in the whole series — 2.72 and 3.00 against a mean of
-9.2 — with all eight farms active, and they observed 33 and 27 *Osmia*, both
-above the 13-year median. The model's most confident predictions are the ones the
-data contradicts most clearly.
-
-**Summary.** Turley's published six points reproduce, and the reconstruction of
-his own sampling frame reproduces them at r = 0.963. Running that same frame for
-13 years leaves no detectable relationship. Whether that overturns the six-point
-result, or simply reflects trapping effort the data cannot control for, is part
-of the open question in §2.
-
-### Also checked: FREC only, blue vane only
-
-Every restriction so far still mixes farms. Narrowing to the **twelve FREC farms
-at the Penn State Fruit Research and Extension Center** — one research station,
-one trap type — removes farm turnover as a confound entirely and yields an
-unbroken 2012–2025 series. Trimming to years the forage index covers gives 13
-consecutive years at a single PRISM cell:
-
-| Year | *Osmia* | *cornifrons* | predicted offspring |
-|---|---|---|---|
-| 2012 | 2 | 0 | 11.57 |
-| 2013 | 5 | 1 | 6.75 |
-| 2014 | 15 | 0 | 7.83 |
-| 2015 | 34 | 18 | 10.77 |
-| 2016 | 25 | 9 | 11.54 |
-| 2017 | 16 | 4 | 1.60 |
-| 2018 | 16 | 4 | 2.43 |
-| 2019 | 12 | 3 | 8.85 |
-| 2020 | 17 | 11 | 8.14 |
-| 2021 | 19 | 11 | 11.70 |
-| 2022 | 35 | 32 | 5.86 |
-| 2023 | 15 | 3 | 9.49 |
-| 2024 | 70 | 29 | 4.45 |
-
-| Response | n | r | R² | p |
-|---|---|---|---|---|
-| *Osmia* genus | 13 | −0.230 | 0.053 | 0.45 |
-| *cornifrons* | 13 | −0.139 | 0.019 | 0.65 |
-| *Osmia*, excluding the 2024 spike | 12 | **+0.028** | 0.001 | 0.93 |
-| *cornifrons*, excluding 2024 | 12 | +0.026 | 0.001 | 0.94 |
-| *Osmia*, Spearman rank | 13 | −0.132 | — | 0.67 |
-
-Stable across both parameter sets and both FREC cells — eight variants give R²
-between 0.005 and 0.053, a negative slope in every one, and p ≥ 0.45 throughout.
-Excluding the single outlying year leaves a correlation of **+0.03**: not a weak
-relationship, but the absence of one.
-
-The chapter's 2017 and 2018 are instructive. They carry the two lowest predicted
-values in the series (1.60 and 2.43, against a mean of 7.8) yet both observed 16
-*Osmia* — squarely mid-range. The model's sharpest predictions are contradicted
-most clearly.
-
-This does not control trapping *intensity* at FREC, which may still vary between
-years and is not recorded. It does control location, trap type, program and
-curation, which is as far as the data allows.
-
-### What this does and does not establish
-
-It establishes that **the chapter's Objective 3 result is not reproducible on a
-larger sample from the same monitoring program**, and that its R² = 0.79 was
-carried by a random effect fitted to one observation per group.
-
-It does not establish that AppleBee is wrong. Three alternative explanations
-remain open, and none can be closed with the data available:
-
-1. **Effort is still uncontrolled.** Restriction holds trap type and cell
-   constant but not trapping intensity, which varies between cells and years in
-   ways the extract cannot show. This is the most likely confound and the reason
-   trap-level effort records would be worth more than any modelling change.
-2. **Blue vane catch is not abundance.** It samples foraging adults, and catch
-   depends on trap attractiveness relative to competing floral resources —
-   plausibly *anti*-correlated with the forage index that drives egg production
-   in the model, which would explain a negative slope.
-3. **Genus counts pool species.** *pumila*, *bucephala* and *taurus* have
-   different phenology from the modelled species. Restricting to *cornifrons*
-   roughly quadruples marginal R² (0.008 → 0.035, and 0.015 → 0.084 on the wider
-   panel) and gives the only variant approaching significance, which is weak
-   support for this mattering.
-
-A defensible evaluation of the full model still does not exist. Objectives 2 and
-3 both now rest on data limitations rather than on the model.
+The one result worth carrying forward: reconstructing Turley's own eight-farm
+sampling frame reproduced his published annual counts at r = 0.963, and running
+that same frame over 13 years rather than 6 showed no detectable relationship
+with predicted offspring. That bears on the open question in §2 about what
+Equation 4.11's R² measures, and is recorded here so the question is not lost
+with the data.
 
 ---
 
@@ -470,7 +210,7 @@ A second, smaller difference: the chapter describes collections "every 6 days",
 but the recorded `Calendar_Date` values are irregular (time point 1 spans 20–27
 May across sites). This replication uses each site's own recorded collection date.
 
-## 4. The Sobol ranking flip is real and is *not* caused by the §3 data gap
+## 4. The Sobol ranking flip is real, and independent of everything else
 
 | Parameter | Chapter S1 / ST | This replication S1 / ST |
 |---|---|---|
@@ -717,7 +457,6 @@ Recorded because they affect results and are choices, not deductions:
 .venv/bin/python scripts/run_pa_simulation.py --params calibrated
 .venv/bin/python scripts/analyse_pa_simulation.py             # §1 tables
 .venv/bin/python scripts/run_sobol.py --n 512                 # §4
-.venv/bin/python scripts/run_biddinger_evaluation.py          # §2b
 .venv/bin/python scripts/make_figures.py
 .venv/bin/python -m pytest tests/ -q
 ```

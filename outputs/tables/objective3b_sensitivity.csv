@@ -1,9 +1,0 @@
-response,cells,zeros,n,n_cells,marginal_r2,conditional_r2,slope,slope_p
-Osmia genus,3 continuous,drop ambiguous,37,3,0.0076,0.0076,-0.219,0.5424
-Osmia genus,3 continuous,keep as zero,39,3,0.0078,0.0078,-0.219,0.5827
-Osmia genus,all sampled cells,drop ambiguous,52,9,0.0145,0.1907,-0.383,0.3856
-Osmia genus,all sampled cells,keep as zero,143,11,0.0198,0.1481,-0.172,0.3703
-O. cornifrons,3 continuous,drop ambiguous,37,3,0.0351,0.0952,-0.182,0.4433
-O. cornifrons,3 continuous,keep as zero,39,3,0.034,0.0777,-0.178,0.4551
-O. cornifrons,all sampled cells,drop ambiguous,52,9,0.0842,0.1581,-0.341,0.0925
-O. cornifrons,all sampled cells,keep as zero,143,11,0.0393,0.1505,-0.113,0.1551

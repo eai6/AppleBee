@@ -1,4 +1,0 @@
-response,n,cells,marginal_r2,conditional_r2,slope,slope_p,rmse
-Osmia genus,37,3,0.0076,0.0076,-0.219,0.5424,14.18
-O. cornifrons,37,3,0.0351,0.0952,-0.182,0.4433,6.7
-Turley 2014-2019 (chapter Objective 3),6,1,0.2121,0.803,1.994,0.0013,7.52
