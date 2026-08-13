@@ -129,9 +129,15 @@ def predict_eggs(data: CentrellaData, params: ModelParams) -> pd.DataFrame:
 
     Nest tubes were retrieved and replaced roughly every six days, but the
     recorded collection dates are not perfectly regular across sites, so each
-    window is taken as the ``COLLECTION_INTERVAL_DAYS`` ending on that site's
-    own recorded collection date. Windows are additionally clipped to start no
-    earlier than the day foraging began (emergence plus mating days).
+    window is the ``COLLECTION_INTERVAL_DAYS`` **ending on and including** that
+    site's own recorded collection date. Windows are additionally clipped to
+    start no earlier than the day foraging began (emergence plus mating days).
+
+    The collection day belongs in the window: a tube retrieved on day D holds
+    the eggs laid up to and including D. Excluding it shifts every window a day
+    earlier and, in this dataset, misses the run of six fully favourable days
+    from 25-30 May 2015 entirely -- which caps predicted eggs at 10 where the
+    chapter reports a maximum of 12, and costs about 0.10 of R^2.
     """
     geometry = data.sites.set_index("Site")
     foraging_start = EMERGENCE_DATE + pd.Timedelta(days=params.mating_days)
@@ -139,7 +145,7 @@ def predict_eggs(data: CentrellaData, params: ModelParams) -> pd.DataFrame:
     rows = []
     for obs in data.observations.itertuples():
         site = geometry.loc[obs.Site]
-        end = obs.collection_date
+        end = obs.collection_date + pd.Timedelta(days=1)  # window is [start, end)
         start = max(end - pd.Timedelta(days=COLLECTION_INTERVAL_DAYS), foraging_start)
         n_days = (end - start).days
         if n_days <= 0:

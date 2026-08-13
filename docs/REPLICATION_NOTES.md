@@ -14,7 +14,9 @@ Nothing needed to be downloaded.
 
 | Objective | Chapter | Replication | Status |
 |---|---|---|---|
-| 2 — egg production vs Centrella | R² 0.52 / 0.60 | 0.41 / 0.48 | **fails** — the response variable is not in the available data (§3) |
+| 2 — egg production vs Centrella | R² 0.52 | **0.510** | **replicates** (§3) |
+| 2 — best achievable R² | 0.60 | **0.601–0.643** | **replicates**; the optimum sits at different thresholds (§3, §4) |
+| 2 — observed egg distribution | 206 / 65 / 12 / 42 | 182 / 52 / 4 / 41 | **unresolved** — not derivable from the published dataset (§3) |
 | 2 — Sobol ranking | precipitation most sensitive | temperature most sensitive | **fails** — precipitation cannot be most sensitive over the Table 4-5 ranges, and the chapter contradicts itself (§4) |
 | 3 — full model vs Turley | R² 0.79, RMSE 7.69 | **0.803, RMSE 7.52** | **replicates** |
 | 3 — calibrated params | R² 0.77, RMSE 8.13 | 0.797, RMSE 7.63 | **replicates** |
@@ -388,164 +390,102 @@ A defensible evaluation of the full model still does not exist. Objectives 2 and
 
 ---
 
-## 3. Objective 2 fails on the response variable, and it is provably not a scaling issue
+## 3. Objective 2 replicates — after correcting a window off-by-one
+
+**This section previously reported that Objective 2 failed. That was my error,
+not the chapter's.** The cause was a one-day offset in how I built the collection
+windows, found on 2026-08-13 by taking seriously the fact that the chapter also
+reports its *predicted* egg statistics.
+
+### The bug
+
+Nest tubes were retrieved and replaced roughly every six days. I built each
+window as the six days *ending the day before* collection — `[D-6, D-1]` —
+excluding the collection day itself. A tube retrieved on day D holds the eggs
+laid up to and including D, so the window should be `[D-5, D]`.
+
+In this dataset that one day matters enormously, because 25–30 May 2015 is a run
+of **six consecutive fully favourable days at all 17 sites** (warm, no rain).
+Shifting every window a day early missed that run entirely.
+
+The chapter's own reported predicted-egg statistics are what exposed it:
+
+| Predicted eggs per window | max | mean | min | SD |
+|---|---|---|---|---|
+| Chapter | **12** | 3 | 0 | 2 |
+| Mine, window `[D-6, D-1]` | **10** | 3.45 | 1 | 1.74 |
+| Mine, window `[D-5, D]` | **12** | 3.61 | 1 | 1.96 |
+
+A maximum of 12 requires six favourable days at 2 eggs/day. Ten was arithmetically
+impossible to reconcile with the chapter, and that should have been the first
+thing I checked.
+
+### With the window corrected
 
 | Metric | Chapter | This replication |
 |---|---|---|
-| Default params, R² | 0.52 | 0.361 (adults) / 0.410 (back-corrected) |
-| Calibrated params, R² | 0.60 | 0.437 / 0.477 |
-| Improvement from calibration | +0.08 | **+0.07** |
+| Default params, R² | 0.52 | **0.510** |
+| Best achievable R² | 0.60 | **0.601** (grid) / **0.643** (Saltelli, 2,560 samples) |
 
-The *direction and size of the calibration effect* replicate. The absolute level
-does not.
+**Objective 2's headline numbers replicate.** The default-parameter fit lands
+within 0.01, and the best achievable R² reproduces the chapter's 0.60 to three
+decimals.
 
-The chapter reports observed six-day egg totals with max/mean/min/SD of
-**206 / 65 / 12 / 42**. The extract in `data/inputs/observations/` records
-emerged adults and a larval-mortality proportion, not brood-cell counts.
+Two differences remain, both smaller than the one I had wrong:
 
-**It cannot be a units or scaling difference.** R² from a regression with an
-intercept is exactly invariant to any affine transform of the response.
-Confirmed numerically — all three give R² = 0.3613 to four decimals:
+- **The calibration *gain* no longer replicates.** Before the window fix the gain
+  was +0.068 against the chapter's +0.08, which looked like a clean reproduction.
+  With the window corrected the default fit rises to 0.510 while the chapter's
+  calibrated thresholds give 0.521, so the gain is **+0.011**. Fixing a real bug
+  improved one comparison and worsened another; both are reported.
+- **The calibration optimum sits elsewhere.** The chapter reports its best fit at
+  forage 0.54, temperature 18.72 °C, precipitation 4.33 mm; the same search here
+  peaks at 0.50 / 21.0 / 6.0. At the chapter's own values this implementation
+  gives R² 0.521 rather than 0.60, so the ridge is flat and the located optimum
+  is not well identified.
+- **The observed egg distribution still does not match**, and that remains
+  unexplained — see below.
 
-| Response | R² |
-|---|---|
-| emerged adults | 0.3613 |
-| adults × 1.42 (rescaled to the chapter's mean of 65) | 0.3613 |
-| adults + 19.3 (shifted to the chapter's mean of 65) | 0.3613 |
+### Still unresolved: the observed counts
 
-So the chapter's higher R² requires a response that differs from emerged adults
-**row by row**, not overall. Searching the derivations the extract allows:
+The chapter reports observed six-day egg totals of max/mean/min/SD
+**206 / 65 / 12 / 42**. The published dataset records emerged adults and a
+larval-mortality proportion. Reconstructing cells as
+`(males + females) / (1 - larval mortality)` — the chapter's own approach — gives
+**182 / 52 / 4 / 41**.
 
-| Candidate | max | mean | min | SD | mean abs. error vs target | R² |
-|---|---|---|---|---|---|---|
-| **Chapter target** | **206** | **65** | **12** | **42** | — | **0.52** |
-| emerged adults (M+F) | 175 | 45.7 | 4 | 37.6 | 0.305 | 0.361 |
-| adults ÷ (1 − larval mortality) | 182 | 51.6 | 4 | 41.2 | 0.251 | 0.410 |
-| adults + nest tubes | 198 | 52.5 | 5 | 42.5 | 0.207 | 0.366 |
-| nest tubes × 9.6 cells/tube | 221 | 64.8 | 10 | 49.7 | **0.115** | 0.352 |
-| best fit of `a·adults + b·tubes` to all four statistics | 209 | 56.8 | 6 | 44.9 | 0.173 | 0.370 |
+That reconstruction is bounded below by the adult count, because larval mortality
+cannot be negative, and **11 of 51 rows record mortality of exactly 0.000** so
+receive no correction at all. The smallest row has 4 adults and zero recorded
+mortality; reaching the chapter's minimum of 12 from it would need a mortality of
+0.67. No combination of the available columns reproduces the target distribution.
 
-Nothing reaches the target distribution, and — the decisive part — **nothing
-exceeds R² 0.41.** The candidate that best matches the chapter's four summary
-statistics (`tubes × 9.6`) has a *worse* R² than the one already in use.
-Widening the correction for brood cells that failed before adulthood raises R²
-only to a plateau:
-
-| extra failure rate beyond recorded larval mortality | 0.00 | 0.05 | 0.10 | 0.15 | 0.20 | 0.30 |
-|---|---|---|---|---|---|---|
-| R² | 0.410 | 0.414 | 0.419 | 0.427 | 0.440 | 0.440 |
-
-### The back-correction is bounded below by the adult count
-
-The intended derivation was
-`cells = (males + females) / (1 − larval mortality)` — 10 emerged adults at 50%
-larval mortality implies 20 cells. That is what `eggs_backcorrected` computes,
-and it is the default response. It cannot reach the chapter's figures, for a
-structural reason rather than a numerical one.
-
-Because `0 ≤ larval mortality < 1`, the quotient is **always at least the adult
-count**. And **11 of the 51 rows record larval mortality of exactly 0.000**, so
-for those rows `cells == adults` exactly, with no correction applied at all.
-
-| | max | mean | min | SD |
-|---|---|---|---|---|
-| `adults / (1 − larval mortality)` | 182.4 | 51.6 | **4.0** | 41.2 |
-| Chapter target | 206 | 65 | **12** | 42 |
-
-The smallest row (site RF, time point 2) has 2 males, 2 females and larval
-mortality 0.00 → 4 cells. Reaching the chapter's minimum of 12 from that row
-would need a mortality of 0.67. The largest row (site OK, time point 2) has 175
-adults at 4.1% mortality → 182 cells; reaching 206 would need 15%.
-
-So **the reported 206 / 65 / 12 / 42 cannot have come from this formula applied
-to this file.** Either those statistics were computed from a fuller source than
-the published deposit, or they are in error.
-
-The mean gap points the same way: 65 against 51.6 implies roughly 20% of cells
-produced neither an emerged adult nor a recorded larval death. That is exactly
-what x-radiography would count and this file would not — cells that failed as
-eggs, were parasitised, or produced adults that died before emerging. Larval
-mortality is one fate among several; the cell tally is the superset.
-
-### The gap is not a definition of R², either
-
-Four standard ways of reporting R² from the same mixed-effects fit, on
-`eggs_backcorrected`:
-
-| Definition | default | calibrated |
-|---|---|---|
-| 1 − SS_res/SS_tot, fixed effects only | 0.175 | 0.272 |
-| 1 − SS_res/SS_tot, including random effects (used here) | **0.410** | **0.477** |
-| Nakagawa marginal R²m | 0.178 | 0.257 |
-| Nakagawa conditional R²c | 0.324 | 0.385 |
-| *Chapter* | *0.52* | *0.60* |
-
-The value already reported is the most generous of the four. No definitional
-choice closes the gap.
-
-`load_centrella(observed_eggs=...)` therefore exposes the choice explicitly
-(`emerged_adults` or `eggs_backcorrected`) rather than silently picking one.
-
-### Provenance: the egg counts were never published
-
-The source is:
-
-> Centrella, M., Russo, L., Moreno Ramírez, N., Eitzer, B., van Dyke, M.,
-> Danforth, B. & Poveda, K. (2020). Diet diversity and pesticide risk mediate
-> the negative effects of land use change on solitary bee offspring production.
-> *Journal of Applied Ecology*, 57(6), 1031–1042.
-> [doi:10.1111/1365-2664.13600](https://besjournals.onlinelibrary.wiley.com/doi/abs/10.1111/1365-2664.13600)
-
-Its data is archived on Dryad as a single 43 KB spreadsheet,
-`Centrella_et_al_Data_Osmia_Path_2020-2.xlsx`
-([doi:10.5061/dryad.1rn8pk0q4](https://datadryad.org/dataset/doi:10.5061/dryad.1rn8pk0q4)).
-**That deposit is the file already in this repository** — same variables
-(`Total_Emerged_Males`/`Females`, `Ave_F_Weight_g`, `Proportion_Larval_Mortality`,
-`Nest_Tubes for_Offspring_Analysis`, the land-cover, pesticide-risk and floral
-columns), converted to CSV. Its usage notes describe emerged adult offspring and
-an x-radiography larval-mortality proportion. **It contains no egg or brood-cell
-counts.**
-
-So the chapter's stated procedure — "the total number of eggs produced within the
-6 days was counted from the extracted completed nest tubes" (dissertation p. 95)
-— draws on a quantity that is not in the published dataset, which is why §3 above
-cannot recover it from any combination of the available columns.
-
-The counts almost certainly exist unpublished: `Proportion_Larval_Mortality` was
-measured by x-radiography of the nest tubes, and that method works by counting
-brood cells and scoring each one's fate. The per-tube cell counts are therefore
-an intermediate of the published variable. Corresponding author:
-Mary Centrella, `mlc344@cornell.edu` (Cornell, Danforth/Poveda labs).
-
-**What to request:** per site and per collection time point (51 rows), the total
-number of brood cells counted from the completed nest tubes — the x-radiograph
-tallies behind `Proportion_Larval_Mortality`, ideally with each cell's fate.
-Any candidate file can be checked against the chapter's stated max/mean/min/SD
-of **206 / 65 / 12 / 42** before it is wired in.
-
-Note that closing this gap will **not** change the Sobol ranking in §4 — that
-was shown there to be independent of the observed-egg definition.
+Note this no longer prevents the R² from replicating: with the corrected window,
+the fit reaches 0.510 using the back-corrected counts and 0.460 using raw emerged
+adults. Whether the published summary statistics came from a fuller dataset, or
+are themselves in error, is a question for the authors — but it is no longer
+load-bearing for the replication.
 
 A second, smaller difference: the chapter describes collections "every 6 days",
-but the recorded `Calendar_Date` values are irregular (time point 1 spans
-20–27 May across sites). This replication uses each site's own recorded
-collection date, which raised R² from 0.29 to 0.36–0.41 against assuming a
-regular cadence.
-
----
+but the recorded `Calendar_Date` values are irregular (time point 1 spans 20–27
+May across sites). This replication uses each site's own recorded collection date.
 
 ## 4. The Sobol ranking flip is real and is *not* caused by the §3 data gap
 
 | Parameter | Chapter S1 / ST | This replication S1 / ST |
 |---|---|---|
-| Temperature threshold | 0.18 / 0.33 | **0.649 / 0.748** |
-| Precipitation threshold | 0.38 / 0.46 | 0.113 / 0.193 |
-| Forage threshold | 0.30 / 0.37 | 0.098 / 0.147 |
+| Temperature threshold | 0.18 / 0.33 | **0.621 / 0.694** |
+| Precipitation threshold | 0.38 / 0.46 | 0.131 / 0.220 |
+| Forage threshold | 0.30 / 0.37 | 0.118 / 0.156 |
+
+Re-run after the §3 window correction. That fix raised the best achievable R²
+from 0.586 to **0.643** but left the ranking untouched, so it is not the cause
+of the disagreement.
 
 2,560 Saltelli samples; S1 confidence ±0.10 or better, so the ordering is well
-separated. Best achievable R² replicates closely — **0.586 here against 0.60 in
-the chapter** — but at different thresholds (temperature 21.6 °C, precipitation
-7.7 mm here; 18.72 °C and 4.33 mm in the chapter).
+separated. Best achievable R² replicates — **0.643 here against 0.60 in the
+chapter** — but at different thresholds (temperature 21.4 °C, precipitation
+8.3 mm here; 18.72 °C and 4.33 mm in the chapter).
 
 Because the sensitivity target is R² against the observed egg counts, the
 obvious worry is that this ranking is downstream of §3. **It is not.** Re-running
