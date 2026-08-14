@@ -101,5 +101,3 @@ none (13.47 → 13.88). It was the weather, not early emergence.
   against it would quantify the daily-mean artefact
 - Pennsylvania weather traces to the dissertation archive rather than a
   re-fetchable source, so PA alone cannot be rebuilt from a clone
-- `outputs/tables/pennsylvania_simulation_by_year.csv` is left over from the
-  removed section
