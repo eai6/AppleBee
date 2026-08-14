@@ -20,6 +20,7 @@ Nothing needed to be downloaded.
 | 2 — Sobol ranking | precipitation most sensitive | temperature most sensitive | **fails** — precipitation cannot be most sensitive over the Table 4-5 ranges, and the chapter contradicts itself (§4) |
 | 3 — full model vs Turley | R² 0.79, RMSE 7.69 | **0.803, RMSE 7.52** | **replicates** |
 | 3 — calibrated params | R² 0.77, RMSE 8.13 | 0.797, RMSE 7.63 | **replicates** |
+| 3 — slope and significance | β 1.82 / 1.51, p > 0.05 | β 1.99 / 2.31, p ≈ 0.001 | **fails** — `statsmodels` gives a standard error 3.1× too small under a singleton random effect; the chapter's non-significant finding is the defensible one (§2) |
 | 4 — statewide simulation | mean 17, min 1 | 15.4, 0.0 | **reconciled** by one reading of the foraging period (§5) |
 | 4 — no-egg days, RF importance | 6.38 / 4.40; egg production dominant | 6.63 / 4.44; same ranking | **replicates** |
 | 4 — spatial and temporal pattern | forested north high, 2018 the minimum | same | **replicates** |
@@ -99,6 +100,48 @@ Under a plain OLS on the same six points the slope is not significant
 (Pearson r = 0.46, 95% CI roughly −0.56 to 0.93), and `statsmodels` reports
 `ConvergenceWarning: The Hessian matrix at the estimated parameter values is not
 positive definite` for the mixed fit.
+
+### The conditional R² is arithmetically forced, not estimated
+
+With one observation per group the variance components are not separable, and
+`statsmodels` settles on **group variance = residual scale = 169.5554** — equal to
+four decimal places. Equal components give a shrinkage factor of exactly ½, so
+every fitted value is the midpoint of the marginal prediction and that year's own
+observation. Verified across all six years:
+
+```
+shrinkage toward each year's own observation: [0.5]
+```
+
+Halving every residual quarters the error sum of squares, so the conditional R²
+follows from the marginal one by arithmetic:
+
+    1 − (1 − 0.2121) / 4 = 0.8030   =   the reported conditional R²
+
+to four decimal places. The 0.79/0.803 is therefore not an independent measure of
+fit — it is 0.212 passed through a shrinkage constant that the design fixed in
+advance. Any marginal R² would have mapped to a conditional one the same way.
+
+### The coefficient does *not* replicate
+
+R² and RMSE reproduce, but the slope and its p-value do not:
+
+| | Chapter | This replication |
+|---|---|---|
+| Default, β | 1.82, **p > 0.05** | **1.99, p = 0.001** |
+| Calibrated, β | 1.51, **p > 0.05** | **2.31, p = 0.002** |
+
+Same six points, same equation, opposite conclusion on significance — so one of
+the two fits is misbehaving, and the evidence points at this one. `statsmodels`
+returns a standard error of **0.618** against OLS's **1.922** on the same data,
+3.1× smaller, and tests it with a *z* statistic assuming asymptotic normality at
+n = 6. That is the same non-identifiability as above, surfacing in the standard
+error instead of the R².
+
+**The chapter's conclusion is the defensible one.** It reports the effect as
+positive but not statistically significant, "likely due to the small sample size
+(n = 6)" — which is both correct and more conservative than what this
+implementation prints. The p ≈ 0.001 here should not be read as evidence.
 
 **The chapter's 0.79 is reproducible and is what its stated method produces.**
 Which of these two R² definitions should be reported is a question for a
