@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 import requests
 
+from .. import config
 from ..config import ARCHIVES
 
 CDL_SERVICE = "https://nassgeodata.gmu.edu/axis2/services/CDLService/GetCDLFile"
@@ -44,7 +45,10 @@ CDL_SERVICE = "https://nassgeodata.gmu.edu/axis2/services/CDLService/GetCDLFile"
 CDL_CRS = "EPSG:5070"
 
 # Koh et al. (2016) expert values per CDL class.
-KOH_TABLE = ARCHIVES / "data" / "CDL" / "cdl_reclass_koh.csv"
+# Tracked under data/inputs/; the archives/ copy is the historical original and
+# is used only if the tracked one is absent.
+KOH_TABLE = config.KOH_FLORAL_CSV
+KOH_TABLE_ORIGINAL = ARCHIVES / "data" / "CDL" / "cdl_reclass_koh.csv"
 SPRING_COLUMN = "floral_resources_spring_index"
 
 DEFAULT_RADII_M = (1000, 3000, 5000)
@@ -61,6 +65,8 @@ STATE_FIPS = {
 
 def load_koh_lookup(column: str = SPRING_COLUMN, path: Path = KOH_TABLE) -> np.ndarray:
     """Koh expert values as a 256-entry lookup indexed by CDL class."""
+    if not path.exists() and path == KOH_TABLE and KOH_TABLE_ORIGINAL.exists():
+        path = KOH_TABLE_ORIGINAL
     table = pd.read_csv(path)
     if column not in table.columns:
         raise ValueError(f"{path.name} has no column {column!r}")

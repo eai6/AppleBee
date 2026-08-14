@@ -78,3 +78,4 @@ Rules:
 | 3 | [3_biddinger_objective3_evaluation_plan.md](3_biddinger_objective3_evaluation_plan.md) | *(withdrawn)* Rebuild Objective 3 on the Biddinger database — data and code removed 2026-08-13 |
 | 4 | [4_data_acquisition_pipeline_plan.md](4_data_acquisition_pipeline_plan.md) | Build PRISM and CDL→forage acquisition pipelines so the simulation extent is not fixed to Pennsylvania |
 | 5 | [5_northeast_simulation_and_web_report_plan.md](5_northeast_simulation_and_web_report_plan.md) | Run AppleBee across the Northeast on the acquired inputs; publish a web report |
+| 6 | [6_paper_analysis_notebook_and_input_provenance_plan.md](6_paper_analysis_notebook_and_input_provenance_plan.md) | Recast the notebook as the paper's reproducible analysis; secure and document every input |

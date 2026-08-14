@@ -41,6 +41,11 @@ NY_TMEAN_CSV = NY_WEATHER_DIR / "ny_tmean_prism_daily.csv"
 NY_PPT_CSV = NY_WEATHER_DIR / "ny_ppt_prism_daily.csv"
 NY_FORAGE_CSV = INPUTS / "forage" / "ny_forage_spring_2015_sites.csv"
 
+# Koh et al. (2016) expert floral-resource values per CDL class -- the lookup the
+# Lonsdorf forage index is built from. Kept here rather than in archives/ so
+# every input the model depends on is tracked and hashable.
+KOH_FLORAL_CSV = INPUTS / "forage" / "koh_2016_cdl_floral_index.csv"
+
 CENTRELLA_CSV = INPUTS / "observations" / "centrella_2020_ny_orchards.csv"
 TURLEY_CSV = INPUTS / "observations" / "turley_2022_pa_blue_vane.csv"
 

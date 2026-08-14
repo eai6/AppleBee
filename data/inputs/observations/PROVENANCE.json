@@ -1,0 +1,42 @@
+{
+  "dataset": "Field observations the model is evaluated against",
+  "source": "published datasets, see per_file below",
+  "retrieved": "inherited with the dissertation; re-filed here 2026-08-08",
+  "per_file": {
+    "centrella_2020_ny_orchards.csv": {
+      "study": "Centrella et al. (2020), Journal of Applied Ecology",
+      "design": "17 Finger Lakes apple orchards stocked with Osmia cornifrons nest tubes on 2015-05-05; emergence 2015-05-07; tubes collected at 3 time points to 2015-06-24",
+      "rows": 51,
+      "columns": 88,
+      "columns_used": [
+        "Site_Code",
+        "Time_Point",
+        "Calendar_Date",
+        "Total_Emerged_Males",
+        "Total_Emerged_Females",
+        "Proportion_Larval_Mortality"
+      ],
+      "response": "brood cells, reconstructed as (males + females) / (1 - larval mortality); the file records emerged adults, not cells"
+    },
+    "turley_2022_pa_blue_vane.csv": {
+      "study": "Turley et al. (2022)",
+      "doi": "10.5061/dryad.9kd51c5mc",
+      "design": "blue vane traps at 8 locations around the Penn State Fruit Research and Extension Center, Adams County PA, weekly April-October 2014-2019",
+      "rows": 26716,
+      "genera": 30,
+      "response": "annual count of Osmia specimens (183 of 26,716 rows), six numbers"
+    }
+  },
+  "rebuildable_locally": false,
+  "rebuild": "re-download from the cited sources; both files are small enough to be tracked in git, so a clone already has them",
+  "files": {
+    "centrella_2020_ny_orchards.csv": {
+      "bytes": 42875,
+      "sha256": "aab59ba9024cf23b9256d5e060e55d9cd088515e1c6305b68721cc85cbd289de"
+    },
+    "turley_2022_pa_blue_vane.csv": {
+      "bytes": 2807246,
+      "sha256": "41dd11c56e548ee1adc1d190ceb95165f6d51da457a94061167738df20a25011"
+    }
+  }
+}

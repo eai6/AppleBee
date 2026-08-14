@@ -1,0 +1,44 @@
+{
+  "dataset": "Lonsdorf spring floral resource index, 0-1, per grid cell per year",
+  "source": "USDA Cropland Data Layer (https://www.nass.usda.gov/Research_and_Science/Cropland/Release/datasets/{year}_30m_cdls.zip) scored with Koh et al. (2016) expert spring values",
+  "method": "area-weighted mean of the Koh spring index over CDL classes within a foraging radius (exactextract, EPSG:5070); CDL class 0 (Background) treated as nodata, not as zero forage",
+  "retrieved": "2026-08-07/08 (northeast, conus); pa and ny inherited with the dissertation",
+  "radii_m": [
+    1000,
+    3000,
+    5000
+  ],
+  "radius_used_by_the_model": 1000,
+  "period": "2013-2018 (northeast, conus); 2008-2023 (pennsylvania); 2015 (new york sites)",
+  "validation": {
+    "vs archived Pennsylvania index": "r = 0.985-0.992 at 1 km",
+    "conus vs northeast rebuild": "r = 1.000000 on shared cells",
+    "national vs per-state CDL": "r = 0.9995, mean absolute difference 0.0001 over 221,155 cell-years; national is more complete (no state-border gaps)"
+  },
+  "known_gaps": "pennsylvania 2017 is short 1,452 of 7,452 cells (a CDL gap); ForageGrid.get falls back to the nearest year for the same cell and records every substitution in ForageGrid.fallbacks",
+  "rebuildable_locally": true,
+  "rebuild": "python scripts/build_forage.py --region {conus|northeast} --years 2013 2018 --source national",
+  "rebuild_cost": "~1.9 GB CDL download per year, plus zonal statistics; per-year partials in {region}_forage_by_year/ so a rebuild only redoes what is missing",
+  "files": {
+    "pa_forage_spring_lonsdorf.csv": {
+      "bytes": 6973348,
+      "sha256": "6f0a8420d1f74c9dd884a546410c68f3afe89876ea0677d344d586a9d1c497fd"
+    },
+    "ny_forage_spring_2015_sites.csv": {
+      "bytes": 2771,
+      "sha256": "87daf4cb1d86213f375c0b1cd30a809e08ebe648fdc8699711d7617f790c32ce"
+    },
+    "koh_2016_cdl_floral_index.csv": {
+      "bytes": 12279,
+      "sha256": "501c9c133e357d2e3b242b8cf5194fa9419098594de90444074e5fa11164dc2f"
+    },
+    "conus_forage_spring_lonsdorf.csv": {
+      "bytes": 293580034,
+      "sha256": "ac63c31e2391b20735af86597a9ab62f179b798820b9f081641e186bcc81d7d5"
+    },
+    "northeast_forage_spring_lonsdorf.csv": {
+      "bytes": 44461604,
+      "sha256": "6a26e74e954023d630a6d3f7371977db6d7b532007a67bd4ad1c5d9455e13076"
+    }
+  }
+}
