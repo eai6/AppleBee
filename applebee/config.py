@@ -115,7 +115,77 @@ class ModelParams:
 
     def with_(self, **kwargs) -> "ModelParams":
         """Return a copy with the given fields replaced."""
+        unknown = set(kwargs) - set(self.__dataclass_fields__)
+        if unknown:
+            raise TypeError(f"unknown parameter(s): {sorted(unknown)}")
         return replace(self, **kwargs)
+
+    # -- configuring a run from a file --------------------------------------
+
+    def to_dict(self) -> dict:
+        """Plain types, ready to serialise. Tuples become lists."""
+        out = {}
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            out[name] = list(value) if isinstance(value, tuple) else value
+        return out
+
+    @classmethod
+    def from_dict(cls, values: dict) -> "ModelParams":
+        """Build from a mapping, starting from the literature defaults.
+
+        Only the keys present are overridden, so a config file need name just the
+        parameters it changes. Unknown keys raise rather than being ignored -- a
+        typo in a config silently running the default would be worse than a stop.
+        """
+        known = set(cls.__dataclass_fields__)
+        unknown = set(values) - known
+        if unknown:
+            raise ValueError(
+                f"unknown parameter(s) {sorted(unknown)}; expected any of {sorted(known)}"
+            )
+        coerced = {}
+        for key, value in values.items():
+            field_type = cls.__dataclass_fields__[key].type
+            coerced[key] = tuple(value) if isinstance(value, list) else value
+        return replace(cls(), **coerced)
+
+    @classmethod
+    def from_file(cls, path) -> "ModelParams":
+        """Read parameters from a JSON or TOML file.
+
+        Both formats are stdlib, so a run stays reproducible from a text file
+        that can sit next to its results in version control.
+        """
+        path = Path(path)
+        text = path.read_text()
+        if path.suffix.lower() == ".toml":
+            import tomllib
+
+            values = tomllib.loads(text)
+        else:
+            import json
+
+            values = json.loads(text)
+        # Allow the parameters to be nested under a [parameters] table.
+        if len(values) == 1 and isinstance(next(iter(values.values())), dict):
+            values = next(iter(values.values()))
+        return cls.from_dict(values)
+
+    def to_file(self, path) -> Path:
+        """Write parameters as JSON, so a run can be reproduced exactly."""
+        import json
+
+        path = Path(path)
+        path.write_text(json.dumps(self.to_dict(), indent=2) + "\n")
+        return path
+
+    def differences(self, other: "ModelParams" = None) -> dict:
+        """Which parameters differ from the literature defaults."""
+        other = other or ModelParams()
+        return {k: (getattr(other, k), getattr(self, k))
+                for k in self.__dataclass_fields__
+                if getattr(self, k) != getattr(other, k)}
 
 
 # Sobol sensitivity ranges (Table 4-5).

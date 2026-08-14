@@ -453,8 +453,9 @@ Recorded because they affect results and are choices, not deductions:
 
 ```bash
 .venv/bin/python scripts/build_cache.py                       # once, ~2 min
-.venv/bin/python scripts/run_pa_simulation.py --params default
-.venv/bin/python scripts/run_pa_simulation.py --params calibrated
+.venv/bin/python scripts/simulate.py --list                    # what data is present
+.venv/bin/python scripts/simulate.py --region pennsylvania
+.venv/bin/python scripts/simulate.py --region pennsylvania --params calibrated
 .venv/bin/python scripts/analyse_pa_simulation.py             # §1 tables
 .venv/bin/python scripts/run_sobol.py --n 512                 # §4
 .venv/bin/python scripts/make_figures.py

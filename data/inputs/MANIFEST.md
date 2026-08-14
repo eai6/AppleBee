@@ -186,4 +186,13 @@ Year-to-year stability runs r = 0.992–0.995 with mean absolute change 0.007–
 | `applebee/evaluation/turley.py` | Turley observations (+ the model over Pennsylvania) |
 | `applebee/acquire/` | writes `weather/{region}/` and `forage/{region}_*.csv` |
 
-Paths are declared in `applebee/config.py`.
+Paths are declared in `applebee/config.py`, and the simulation regions are
+registered in `applebee/datasets.py`. To see what is actually on disk and what
+each region covers:
+
+```bash
+python scripts/simulate.py --list
+```
+
+Adding a region means one entry in `DATASETS` — the loader, the usable year
+range and the runnable cell set are all derived from the files themselves.

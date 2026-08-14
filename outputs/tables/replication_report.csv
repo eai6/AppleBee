@@ -1,5 +1,5 @@
 objective,metric,chapter,replication,verdict,note
-1. Equations,sub-model tests vs the chapter's worked examples,all pass,[32m[32m[1m25 passed[0m[32m in 0.37s[0m[0m,replicates,
+1. Equations,sub-model tests vs the chapter's worked examples,all pass,25 passed in 0.36s,replicates,
 1. Equations,1 extreme day -> 10% egg mortality,0.1,0.1,replicates,
 1. Equations,5 extreme days -> 50% egg mortality,0.5,0.5,replicates,
 1. Equations,60 warm pre-winter days -> 15% winter mortality,0.15,0.1175,fails,"the [15 Aug, 1 Oct) window is only 47 days, so 60 warm days cannot occur and the ceiling is 11.75% -- see notes section 6"
