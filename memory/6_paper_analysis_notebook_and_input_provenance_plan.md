@@ -93,6 +93,7 @@ none (13.47 → 13.88). It was the weather, not early emergence.
 
 | SHA | Date | Subject |
 |---|---|---|
+| `33a8004` | 2026-08-14 | Recast the notebook as the paper's analysis, and secure every input |
 
 ## Follow-ups
 

@@ -219,6 +219,7 @@ numbers Objective 3 rests on.
 |---|---|---|
 | `211ce79` | 2026-08-08 | Diagnose the replication and consolidate model inputs under data/inputs/ |
 | `bae94f1` | 2026-08-13 | Fix a collection-window off-by-one; Objective 2 now replicates |
+| `5ae1516` | 2026-08-14 | Record what the Objective 3 mixed model actually measures |
 
 ## Follow-ups
 
