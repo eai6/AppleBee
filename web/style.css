@@ -124,7 +124,13 @@
   .bar { height:7px; border-radius:4px; margin-top:7px; position:relative;
          background:linear-gradient(90deg,#440154,#3b528b,#21918c,#5ec962,#fde725); }
   .bar i { position:absolute; top:-3px; width:3px; height:13px; border-radius:2px;
-           background:var(--ink); box-shadow:0 0 0 2px var(--panel); }
+           background:var(--ink); box-shadow:0 0 0 2px var(--panel); z-index:2; }
+  /* The range the cells actually span, drawn on the same ramp as the mean. */
+  .bar u { position:absolute; top:-2px; height:11px; border-radius:3px;
+           border:1.5px solid var(--ink); background:rgba(255,255,255,.14);
+           box-sizing:border-box; }
+  .drivers dd small { display:block; font-size:10.5px; color:var(--ink-3);
+                      margin-top:1px; letter-spacing:.01em; }
   .drivers { display:grid; grid-template-columns:minmax(0, 1fr) auto; gap:7px 12px;
              font-size:13px; }
   .drivers dt { color:var(--ink-2); }

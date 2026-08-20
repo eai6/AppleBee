@@ -356,18 +356,36 @@ def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGI
 
     springs = []
     for spring, group in results.groupby("offspring_year"):
-        springs.append({
+        mean_doy = int(round(float(group.emergence_doy.mean())))
+        entry = {
             "spring": int(spring),
             "offspring_per_female": round(float(group.offspring.mean()), 2),
             "eggs_per_female": round(float(group.eggs.mean()), 1),
-            "emergence_day_of_year": int(round(float(group.emergence_doy.mean()))),
-            "emergence_date": _day_of_year(int(spring) - 1,
-                                           int(round(float(group.emergence_doy.mean())))),
+            "emergence_day_of_year": mean_doy,
+            "emergence_date": _day_of_year(int(spring) - 1, mean_doy),
             "forage_index": round(float(group.forage_quality.mean()), 3),
             "days_lost_to_cold": round(float(group.no_egg_days_temperature.mean()), 1),
             "days_lost_to_rain": round(float(group.no_egg_days_precipitation.mean()), 1),
             "cells": int(len(group)),
-        })
+        }
+        # An average over hundreds of cells can hide a great deal -- offspring
+        # across a large shape routinely runs three-fold, and the distribution is
+        # skewed, so the mean sits away from the middle. The spread travels with
+        # the mean rather than being left for the reader to assume.
+        if len(group) > 1:
+            entry["spread"] = {
+                "offspring": _spread(group.offspring),
+                "eggs": _spread(group.eggs),
+                "days_lost_to_cold": _spread(group.no_egg_days_temperature),
+                "days_lost_to_rain": _spread(group.no_egg_days_precipitation),
+                "forage_index": _spread(group.forage_quality, 3),
+                "emergence": {
+                    "earliest": _day_of_year(int(spring) - 1, int(group.emergence_doy.min())),
+                    "latest": _day_of_year(int(spring) - 1, int(group.emergence_doy.max())),
+                    "spread_days": int(group.emergence_doy.max() - group.emergence_doy.min()),
+                },
+            }
+        springs.append(entry)
     springs.sort(key=lambda s: s["spring"])
 
     return {
@@ -386,6 +404,14 @@ def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGI
         "parameters": params.to_dict(),
         "caveats": _point_caveats(0.0),
     }
+
+
+def _spread(values, places: int = 1) -> dict:
+    """Median and range beside the mean, so a skewed distribution shows itself."""
+    return {"median": round(float(values.median()), places),
+            "min": round(float(values.min()), places),
+            "max": round(float(values.max()), places),
+            "sd": round(float(values.std()), places)}
 
 
 def _inside(lons: np.ndarray, lats: np.ndarray, ring: list) -> np.ndarray:

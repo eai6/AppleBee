@@ -327,3 +327,23 @@ def test_asking_for_a_spring_that_was_never_run_says_which_exist():
 
 def test_a_search_for_nothing_returns_nothing_rather_than_failing():
     assert api.places("")["places"] == []
+
+
+@needs_northeast
+def test_an_area_reports_its_spread_not_only_its_average():
+    # A mean over hundreds of cells hides a three-fold range and a skew, so the
+    # median and the extremes travel with it.
+    answer = api.area(polygon=[[-77.1, 42.7], [-76.3, 42.75],
+                               [-76.1, 42.2], [-76.9, 41.95]])
+    spring = answer["springs"][-1]
+    spread = spring["spread"]["offspring"]
+    assert spread["min"] < spring["offspring_per_female"] < spread["max"]
+    assert spread["sd"] > 0
+    earliest = spring["spread"]["emergence"]["earliest"]
+    latest = spring["spread"]["emergence"]["latest"]
+    assert earliest < spring["emergence_date"] < latest
+
+
+@needs_northeast
+def test_one_cell_has_no_spread_to_report():
+    assert "spread" not in api.point(42.87, -77.01)["springs"][0]

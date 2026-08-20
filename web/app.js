@@ -192,6 +192,36 @@ function sparkline(points, active) {
   </svg>`;
 }
 
+/* Across a drawn area the mean can sit well away from the middle -- the
+   distribution is skewed by a handful of very good cells -- so the median and
+   the range are shown beside it rather than left to be assumed. */
+const day = (iso) => new Date(iso + "T00:00")
+  .toLocaleDateString(undefined, {day: "numeric", month: "short"});
+
+/* One driver row: the mean, and under it the range when more than one cell
+   contributed to it. */
+function driver(label, value, spread, places) {
+  return `<dt>${label}</dt><dd class="mono">${fmt(value, places)}
+    ${spread ? `<small>${fmt(spread.min, places)} to ${fmt(spread.max, places)}</small>` : ""}</dd>`;
+}
+
+function spreadLine(now) {
+  const s = now.spread && now.spread.offspring;
+  if (!s) return "";
+  return `<div class="rank">Across ${now.cells.toLocaleString()} cells:
+    <b>${fmt(s.min)}</b> to <b>${fmt(s.max)}</b>, middle cell ${fmt(s.median)}.</div>`;
+}
+
+/* The same range, drawn on the ramp, so the width of the spread is seen and not
+   only read. */
+function band(now) {
+  const s = now.spread && now.spread.offspring;
+  if (!s) return "";
+  const left = Math.max(0, s.min / state.peak * 100);
+  const right = Math.min(100, s.max / state.peak * 100);
+  return `<u style="left:${left}%; width:${Math.max(1, right - left)}%"></u>`;
+}
+
 function show(answer, name) {
   state.selected = {...answer, name};
   const springs = answer.springs;
@@ -222,10 +252,11 @@ function show(answer, name) {
         <b class="mono">${fmt(now.offspring_per_female)}</b>
         <span>offspring per female<br>expected in <b>spring ${now.spring}</b></span>
       </div>
+      ${spreadLine(now)}
       ${context.percentile !== undefined ? `<div class="rank">Higher than
         <b>${fmt(context.percentile, 0)}%</b> of the Northeast
         (regional average ${fmt(context.regional_mean)}).
-        <div class="bar"><i style="left:${Math.min(99,
+        <div class="bar">${band(now)}<i style="left:${Math.min(99,
           now.offspring_per_female / state.peak * 100)}%"></i></div></div>` : ""}
     </div>
     <div>
@@ -244,12 +275,15 @@ function show(answer, name) {
     <div>
       <label class="lab">What shaped ${now.spring}</label>
       <dl class="drivers">
-        <dt>Eggs laid per female</dt><dd class="mono">${fmt(now.eggs_per_female)}</dd>
-        <dt>Days too cold to forage</dt><dd class="mono">${fmt(now.days_lost_to_cold, 0)}</dd>
-        <dt>Days rained off</dt><dd class="mono">${fmt(now.days_lost_to_rain, 0)}</dd>
-        <dt>Spring forage nearby</dt><dd class="mono">${fmt(now.forage_index, 2)}</dd>
-        <dt>Bees emerged</dt><dd class="mono">${new Date(now.emergence_date + "T00:00")
-          .toLocaleDateString(undefined, {day: "numeric", month: "short"})}</dd>
+        ${driver("Eggs laid per female", now.eggs_per_female, now.spread?.eggs, 1)}
+        ${driver("Days too cold to forage", now.days_lost_to_cold,
+                 now.spread?.days_lost_to_cold, 0)}
+        ${driver("Days rained off", now.days_lost_to_rain,
+                 now.spread?.days_lost_to_rain, 0)}
+        ${driver("Spring forage nearby", now.forage_index, now.spread?.forage_index, 2)}
+        <dt>Bees emerged</dt><dd class="mono">${day(now.emergence_date)}
+          ${now.spread ? `<small>${day(now.spread.emergence.earliest)} to
+             ${day(now.spread.emergence.latest)}</small>` : ""}</dd>
       </dl>
     </div>`;
 
@@ -273,19 +307,30 @@ function report(now) {
 
     <h3>Expected in spring ${now.spring}</h3>
     <table><tbody>
-      <tr><td>Offspring per female</td><td><b>${fmt(now.offspring_per_female)}</b></td></tr>
+      <tr><td>Offspring per female${now.spread ? ", average" : ""}</td>
+        <td><b>${fmt(now.offspring_per_female)}</b></td></tr>
+      ${now.spread ? `
+      <tr><td>Across ${now.cells.toLocaleString()} cells</td>
+        <td>${fmt(now.spread.offspring.min)} to ${fmt(now.spread.offspring.max)}</td></tr>
+      <tr><td>Middle cell</td><td>${fmt(now.spread.offspring.median)}</td></tr>` : ""}
       <tr><td>Eggs laid per female</td><td>${fmt(now.eggs_per_female)}</td></tr>
-      <tr><td>Bees emerged</td><td>${emerged(now)}</td></tr>
+      <tr><td>Bees emerged</td><td>${emerged(now)}${now.spread
+        ? ` (${emerged({emergence_date: now.spread.emergence.earliest})} to ${
+            emerged({emergence_date: now.spread.emergence.latest})})` : ""}</td></tr>
       ${context.percentile !== undefined ? `<tr><td>Compared with the Northeast</td>
         <td>higher than ${fmt(context.percentile, 0)}% of cells</td></tr>` : ""}
     </tbody></table>
 
     <h3>Season by season</h3>
     <table>
-      <thead><tr><th>Spring</th><th>Offspring per female</th><th>Emerged</th>
+      <thead><tr><th>Spring</th><th>Offspring per female</th>
+        ${springs[0].spread ? "<th>Range</th>" : ""}<th>Emerged</th>
         <th>Cold days</th><th>Wet days</th></tr></thead>
       <tbody>${springs.map(s => `<tr><td>${s.spring}</td>
-        <td>${fmt(s.offspring_per_female)}</td><td>${emerged(s)}</td>
+        <td>${fmt(s.offspring_per_female)}</td>
+        ${s.spread ? `<td>${fmt(s.spread.offspring.min)}&ndash;${
+          fmt(s.spread.offspring.max)}</td>` : ""}
+        <td>${emerged(s)}</td>
         <td>${fmt(s.days_lost_to_cold, 0)}</td>
         <td>${fmt(s.days_lost_to_rain, 0)}</td></tr>`).join("")}</tbody>
     </table>
