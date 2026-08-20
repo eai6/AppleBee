@@ -200,7 +200,7 @@ data — so they ship together rather than in sequence.
       runs later, through the admin path, once the platform exists.* The
       platform is therefore built against 2013-2018 and is fully exercisable on
       it — only the forecast needs data that does not exist yet.
-- [ ] **Phase 2 - the two endpoints that matter.** `/point` (a location, a year,
+- [x] **Phase 2 - the two endpoints that matter.** Done 2026-08-19. `/point` (a location, a year,
       offspring per female and the drivers behind it) and `/evaluate` (Objectives
       2 and 3 re-fitted under the visitor's parameters). One page, two audiences:
       a grower enters an address, a reviewer opens the parameter form. Both are
@@ -279,6 +279,49 @@ the package directory, so any deployment that copies the package gets it.
 | SHA | Date | Subject |
 |---|---|---|
 | `6c48245` | 2026-08-19 | Read weather in byte ranges, and define regions in data |
+
+### Phase 2 — done 2026-08-19
+
+**`applebee/api.py`** — the three answers as plain functions, framework-free and
+AWS-free: `parameters()`, `evaluate(params)` and `point(lat, lon, params)`. A
+handler turns HTTP into a dict and back; nothing between knows about the cloud.
+
+Warm requests are **2 ms** for a point and 140 ms for a full re-evaluation, once
+the grids, the runnable-cell table and the year range are cached per process.
+The first cut was 700 ms because `Dataset.model()` re-opened the matrices on
+every call and `weather_years()` re-read every input to derive a range; both are
+now cached, and that is the entire difference between a cheap endpoint and an
+expensive one.
+
+Two behaviours worth recording as decisions rather than details:
+
+- **Caveats are data.** Every payload carries them, and a test asserts it. A
+  response that returned R² 0.803 without saying the slope is not significant
+  would overstate what the model earned, so it cannot.
+- **A point outside the region is refused, not relocated.** The nearest cell to
+  Mexico City is 5,155 km away; returning it silently would have been a
+  prediction about somewhere else. Past 25 km the answer says which cell
+  actually answered; past 500 km it is a 400.
+
+**`web/app.py`** — one routing table serving both a Lambda Function URL and
+`python -m web.app` on a laptop, stdlib only. Bad input comes back as a 400
+carrying the message `ModelParams` itself raised, so a typo is named rather than
+quietly run with a default.
+
+**`web/index.html`** — one page, no build step, no external assets, so it drops
+onto S3 as-is and satisfies a strict CSP. The parameter form is generated from
+`/api/parameters`, so the page holds no copy of the eighteen numbers. Both panels
+run on arrival: every visitor's default request is identical, which is precisely
+what the response cache is for.
+
+Tests: `tests/test_api.py`, 21 new, pinning that default parameters still
+reproduce the manuscript (R² 0.510 and 0.803, p = 0.358). Suite 70 → 91.
+
+One test failed honestly and was corrected rather than the code: a 25 °C
+foraging threshold does *not* zero out reproduction in upstate New York, because
+spring there does reach a 25 °C daily mean. The test now asserts what is true —
+a stricter threshold can only remove foraging days — and uses 35 °C for the
+unreachable case.
 
 ## Risks
 
