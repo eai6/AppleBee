@@ -61,17 +61,21 @@ let dpr = 1;
 
 function sizeCanvas() {
   const size = map.getSize();
+  // A stacked layout can lay the map out before it has a height, and
+  // createImageData(0, 0) throws rather than drawing nothing.
+  if (!size.x || !size.y) return false;
   dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = size.x * dpr; canvas.height = size.y * dpr;
   canvas.style.width = size.x + "px"; canvas.style.height = size.y + "px";
   const origin = map.containerPointToLayerPoint([0, 0]);
   L.DomUtil.setPosition(canvas, origin);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return true;
 }
 
 function drawGrid() {
   const g = state.grid;
-  sizeCanvas();
+  if (!sizeCanvas()) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   if (!g) return;
 
@@ -108,6 +112,15 @@ function drawGrid() {
 }
 
 map.on("move zoom viewreset resize zoomend moveend", drawGrid);
+
+let resizing = null;
+window.addEventListener("resize", () => {
+  clearTimeout(resizing);
+  resizing = setTimeout(() => { map.invalidateSize(); drawGrid(); }, 120);
+});
+// The first paint can land before the stacked layout has given the map a
+// height, so it is measured again once the browser has settled.
+requestAnimationFrame(() => { map.invalidateSize(); drawGrid(); });
 
 /* ---- selection overlays ---------------------------------------------- */
 let marker = null, ring = null, sketch = null;
