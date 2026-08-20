@@ -306,6 +306,12 @@ environment = {
     # From the provider, so the stack follows wherever it is deployed rather
     # than carrying a second opinion about where that is.
     "AWS_DEFAULT_REGION": region,
+    # Where to start the worker when an administrator approves a job. Absent,
+    # approval still works and the job waits for a worker run by hand.
+    "APPLEBEE_WORKER_CLUSTER": cluster.name,
+    "APPLEBEE_WORKER_TASK": f"{name}-worker",
+    "APPLEBEE_WORKER_SUBNETS": ",".join(worker_subnets),
+    "APPLEBEE_WORKER_SECURITY_GROUP": worker_sg.id,
 }
 if admin_token:
     environment["APPLEBEE_ADMIN_TOKEN"] = admin_token
