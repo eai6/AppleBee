@@ -183,6 +183,15 @@ def main() -> None:
                            "iam:GetRolePolicy", "iam:ListAttachedRolePolicies"],
                 "Resource": f"arn:aws:iam::{account}:role/{args.name}-*",
             }, {
+                # App Runner needs its service-linked role the first time a
+                # service is created in the account, and that is an IAM action
+                # PowerUserAccess excludes.
+                "Effect": "Allow",
+                "Action": "iam:CreateServiceLinkedRole",
+                "Resource": "arn:aws:iam::*:role/aws-service-role/*",
+                "Condition": {"StringEquals": {
+                    "iam:AWSServiceName": ["apprunner.amazonaws.com"]}},
+            }, {
                 # An EC2 origin needs an instance profile, which PowerUserAccess
                 # also excludes, and which is a separate IAM resource type from
                 # the role it carries.

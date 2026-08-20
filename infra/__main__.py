@@ -27,7 +27,6 @@ import pulumi_aws as aws
 
 config = pulumi.Config()
 name = config.get("name") or "applebee"
-instance_type = config.get("instanceType") or "t3.micro"
 # From the environment in CI, where it arrives as a GitHub secret, or from
 # stack config when a human runs pulumi locally. Absent, approval of extension
 # jobs is refused outright rather than left open.
@@ -94,41 +93,55 @@ if not image_uri:
     )
 
 # ---------------------------------------------------------------------------
-# The server
+# The service
 # ---------------------------------------------------------------------------
 #
-# Not a Lambda. The account's organisation forbids anonymous invocation of a
-# function URL *and* refuses CloudFront's service principal, which was the
-# documented way round the first block -- both verified against a function that
-# answered 200 to a SigV4-signed request from an IAM principal in the account.
-# An ordinary HTTP server behind CloudFront involves no invoke permission at
-# all, so no guardrail applies to it.
+# App Runner rather than Lambda, and rather than the EC2 instance this stack
+# briefly described.
 #
-# The trade is honest: about $8 a month against the $0.50 the serverless shape
-# would have cost, and an instance that has to be patched.
+# Lambda was the natural shape -- 2 ms answers, nothing running at rest -- but
+# this account's organisation refuses anonymous invocation of a function URL and
+# refuses CloudFront's service principal too, which was the documented way round
+# the first refusal. Both were verified against a function that answered 200 to
+# a SigV4-signed request from an IAM principal in the same account, so the code
+# was never the question.
+#
+# EC2 behind CloudFront would have worked, at about $8 a month and an operating
+# system to patch. App Runner is cheaper than that, carries its own TLS and a
+# stable URL with no load balancer, and its endpoint is service-managed rather
+# than gated by a resource policy -- which is why the guardrail does not reach
+# it. Verified by standing one up before writing any of this.
 
-role = aws.iam.Role(
-    "api-role",
-    name=f"{name}-api-role",
+ecr_access = aws.iam.Role(
+    "apprunner-ecr",
+    name=f"{name}-apprunner-ecr",
+    description="App Runner pulling the image from a private registry",
     assume_role_policy=json.dumps({
         "Version": "2012-10-17",
         "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole",
-                       "Principal": {"Service": "ec2.amazonaws.com"}}],
+                       "Principal": {"Service": "build.apprunner.amazonaws.com"}}],
     }),
 )
 
 aws.iam.RolePolicyAttachment(
-    "api-ecr", role=role.name,
-    policy_arn="arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role")
+    "apprunner-ecr-policy", role=ecr_access.name,
+    policy_arn=("arn:aws:iam::aws:policy/service-role/"
+                "AWSAppRunnerServicePolicyForECRAccess"))
 
-# Session Manager, so the instance needs no SSH key and no open port 22.
-aws.iam.RolePolicyAttachment(
-    "api-ssm", role=role.name,
-    policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore")
+task = aws.iam.Role(
+    "apprunner-task",
+    name=f"{name}-apprunner-task",
+    description="What the running container may reach",
+    assume_role_policy=json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole",
+                       "Principal": {"Service": "tasks.apprunner.amazonaws.com"}}],
+    }),
+)
 
 aws.iam.RolePolicy(
-    "api-data",
-    role=role.id,
+    "apprunner-data",
+    role=task.id,
     policy=pulumi.Output.all(data.arn, cache.arn).apply(lambda arns: json.dumps({
         "Version": "2012-10-17",
         "Statement": [
@@ -142,124 +155,51 @@ aws.iam.RolePolicy(
     })),
 )
 
-profile = aws.iam.InstanceProfile("api-profile", name=f"{name}-api", role=role.name)
+environment = {
+    "APPLEBEE_DATA_BUCKET": data.bucket,
+    "APPLEBEE_CACHE_BUCKET": cache.bucket,
+    "AWS_DEFAULT_REGION": "us-east-1",
+}
+if admin_token:
+    environment["APPLEBEE_ADMIN_TOKEN"] = admin_token
 
-vpc = aws.ec2.get_vpc(default=True)
-subnets = aws.ec2.get_subnets(filters=[aws.ec2.GetSubnetsFilterArgs(
-    name="vpc-id", values=[vpc.id])])
-
-# Only CloudFront may reach the origin. AWS publishes the edge ranges as a
-# managed prefix list, so this is narrower than "the internet" and does not
-# drift as those ranges change.
-edges = aws.ec2.get_managed_prefix_list(name="com.amazonaws.global.cloudfront.origin-facing")
-
-security = aws.ec2.SecurityGroup(
-    "api-sg",
-    description="AppleBee origin: CloudFront in, anywhere out",
-    vpc_id=vpc.id,
-    ingress=[aws.ec2.SecurityGroupIngressArgs(
-        description="CloudFront edge locations",
-        from_port=80, to_port=80, protocol="tcp", prefix_list_ids=[edges.id])],
-    egress=[aws.ec2.SecurityGroupEgressArgs(
-        from_port=0, to_port=0, protocol="-1", cidr_blocks=["0.0.0.0/0"])],
+service = aws.apprunner.Service(
+    "api",
+    service_name=f"{name}-api",
+    source_configuration=aws.apprunner.ServiceSourceConfigurationArgs(
+        # Deployments come from CI, which pushes a new tag and then runs this.
+        # Left to App Runner, a push would deploy itself with nothing watching.
+        auto_deployments_enabled=False,
+        authentication_configuration=(
+            aws.apprunner.ServiceSourceConfigurationAuthenticationConfigurationArgs(
+                access_role_arn=ecr_access.arn)),
+        image_repository=aws.apprunner.ServiceSourceConfigurationImageRepositoryArgs(
+            image_identifier=image_uri,
+            image_repository_type="ECR",
+            image_configuration=(
+                aws.apprunner.ServiceSourceConfigurationImageRepositoryImageConfigurationArgs(
+                    port="8000",
+                    runtime_environment_variables=environment)),
+        ),
+    ),
+    # The smallest size that holds scientific Python with room for a region run.
+    # Idle memory is the standing cost -- about $5 a month -- and vCPU is billed
+    # only while a request is in flight.
+    instance_configuration=aws.apprunner.ServiceInstanceConfigurationArgs(
+        cpu=config.get("cpu") or "0.5 vCPU",
+        memory=config.get("memory") or "1 GB",
+        instance_role_arn=task.arn,
+    ),
+    # TCP rather than HTTP: the page is served from the same port and a health
+    # check that fetched it would run the whole application every ten seconds.
+    health_check_configuration=aws.apprunner.ServiceHealthCheckConfigurationArgs(
+        protocol="TCP", interval=10, timeout=5,
+        healthy_threshold=1, unhealthy_threshold=5,
+    ),
     tags={"Project": name},
 )
 
-ami = aws.ec2.get_ami(
-    most_recent=True, owners=["amazon"],
-    filters=[aws.ec2.GetAmiFilterArgs(name="name", values=["al2023-ami-*-x86_64"])],
-)
-
-# 1 GB of memory with scientific Python loaded is workable but not roomy, and a
-# region run is the one moment it matters, so the instance gets swap rather than
-# the next size up at twice the price.
-startup = pulumi.Output.all(image_uri, data.bucket, cache.bucket).apply(
-    lambda values: f"""#!/bin/bash
-set -euxo pipefail
-dnf install -y docker
-systemctl enable --now docker
-
-fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
-
-aws ecr get-login-password --region us-east-1 \
-  | docker login --username AWS --password-stdin {values[0].split('/')[0]}
-
-docker run -d --name applebee --restart always -p 80:8000 \
-  -e APPLEBEE_DATA_BUCKET={values[1]} \
-  -e APPLEBEE_CACHE_BUCKET={values[2]} \
-  -e AWS_DEFAULT_REGION=us-east-1 \
-  {values[0]}
-""")
-
-server = aws.ec2.Instance(
-    "api",
-    instance_type=instance_type,
-    ami=ami.id,
-    subnet_id=subnets.ids[0],
-    vpc_security_group_ids=[security.id],
-    iam_instance_profile=profile.name,
-    associate_public_ip_address=True,
-    user_data=startup,
-    # Replace the instance when the image changes: the container is baked into
-    # the startup script, so a new image means a new machine rather than a
-    # machine quietly running last week's code.
-    user_data_replace_on_change=True,
-    root_block_device=aws.ec2.InstanceRootBlockDeviceArgs(
-        volume_size=12, volume_type="gp3", delete_on_termination=True),
-    tags={"Name": f"{name}-api", "Project": name},
-)
-
-# A fixed address, so CloudFront's origin survives a stop or a replacement.
-address = aws.ec2.Eip("api-ip", instance=server.id, domain="vpc",
-                      tags={"Project": name})
-
-# ---------------------------------------------------------------------------
-# The edge
-# ---------------------------------------------------------------------------
-
-CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-ALL_VIEWER = "216adef6-5c7f-47e4-b989-5492eafa07d3"
-
-distribution = aws.cloudfront.Distribution(
-    "api-cdn",
-    enabled=True,
-    comment=f"{name}: the model, its evaluations and its map",
-    origins=[aws.cloudfront.DistributionOriginArgs(
-        origin_id="server",
-        domain_name=address.public_dns,
-        custom_origin_config=aws.cloudfront.DistributionOriginCustomOriginConfigArgs(
-            http_port=80, https_port=443,
-            # The hop to the origin is HTTP because the origin is an IP address
-            # with no certificate; viewers are redirected to HTTPS and CloudFront
-            # terminates TLS.
-            origin_protocol_policy="http-only",
-            origin_ssl_protocols=["TLSv1.2"],
-            origin_read_timeout=60,
-        ),
-    )],
-    default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
-        target_origin_id="server",
-        viewer_protocol_policy="redirect-to-https",
-        allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
-        cached_methods=["GET", "HEAD"],
-        # Answers are already cached in S3 by parameter hash, and a region run
-        # exceeds what the edge would hold anyway.
-        cache_policy_id=CACHING_DISABLED,
-        origin_request_policy_id=ALL_VIEWER,
-        compress=True,
-    ),
-    restrictions=aws.cloudfront.DistributionRestrictionsArgs(
-        geo_restriction=aws.cloudfront.DistributionRestrictionsGeoRestrictionArgs(
-            restriction_type="none"),
-    ),
-    viewer_certificate=aws.cloudfront.DistributionViewerCertificateArgs(
-        cloudfront_default_certificate=True),
-    price_class="PriceClass_100",     # North America and Europe; the audience
-)
-
-pulumi.export("url", distribution.domain_name.apply(lambda d: f"https://{d}"))
-pulumi.export("origin", address.public_dns)
+pulumi.export("url", service.service_url.apply(lambda u: f"https://{u}"))
 pulumi.export("data_bucket", data.bucket)
 pulumi.export("cache_bucket", cache.bucket)
 pulumi.export("image", image_uri)
