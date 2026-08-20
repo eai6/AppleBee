@@ -33,6 +33,7 @@ name = config.get("name") or "applebee"
 admin_token = config.get_secret("adminToken") or os.environ.get("APPLEBEE_ADMIN_TOKEN")
 
 account = aws.get_caller_identity()
+region = aws.get_region().name
 suffix = account.account_id[-6:]
 
 # ---------------------------------------------------------------------------
@@ -158,7 +159,9 @@ aws.iam.RolePolicy(
 environment = {
     "APPLEBEE_DATA_BUCKET": data.bucket,
     "APPLEBEE_CACHE_BUCKET": cache.bucket,
-    "AWS_DEFAULT_REGION": "us-east-1",
+    # From the provider, so the stack follows wherever it is deployed rather
+    # than carrying a second opinion about where that is.
+    "AWS_DEFAULT_REGION": region,
 }
 if admin_token:
     environment["APPLEBEE_ADMIN_TOKEN"] = admin_token

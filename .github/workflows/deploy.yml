@@ -19,6 +19,12 @@ on:
       - .github/workflows/deploy.yml
   workflow_dispatch:
 
+env:
+  # The project's name and home, in one place. bootstrap_aws.py takes the same
+  # --name and derives the role, the state bucket and the registry from it.
+  PROJECT: applebee
+  AWS_REGION: us-east-1
+
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false
@@ -42,7 +48,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
           role-session-name: applebee-deploy-${{ github.run_id }}
 
       # buildx, so the image layers can be cached in ECR between runs and a
@@ -59,12 +65,12 @@ jobs:
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
         run: |
-          uri="$REGISTRY/applebee-api:${{ github.sha }}"
+          uri="$REGISTRY/${{ env.PROJECT }}-api:${{ github.sha }}"
           docker buildx build \
             --platform linux/amd64 \
             --provenance=false --sbom=false \
-            --cache-from "type=registry,ref=$REGISTRY/applebee-api:cache" \
-            --cache-to "type=registry,ref=$REGISTRY/applebee-api:cache,mode=max,image-manifest=true,oci-mediatypes=true" \
+            --cache-from "type=registry,ref=$REGISTRY/${{ env.PROJECT }}-api:cache" \
+            --cache-to "type=registry,ref=$REGISTRY/${{ env.PROJECT }}-api:cache,mode=max,image-manifest=true,oci-mediatypes=true" \
             -f deploy/Dockerfile.server -t "$uri" --push .
           echo "uri=$uri" >> "$GITHUB_OUTPUT"
 

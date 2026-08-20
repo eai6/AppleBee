@@ -194,12 +194,36 @@ def fit_lme(design: pd.DataFrame):
     """
     import statsmodels.formula.api as smf
 
-    model = smf.mixedlm(
+    return fit_with_any_optimiser(smf.mixedlm(
         "observed_eggs ~ predicted_eggs + C(Time_Point)",
         data=design,
         groups=design["Site"],
+    ))
+
+
+# These fits sit close enough to singular that whether they converge depends on
+# the linear algebra underneath: the same data and the same statsmodels give an
+# answer with a warning on macOS's Accelerate and raise "Singular matrix" on
+# Linux's OpenBLAS, which is how a deployment discovered it. That fragility is
+# real -- one observation per year in Objective 3, seventeen small sites in
+# Objective 2 -- but which machine ran it should not decide whether there is an
+# answer at all, so the optimisers are tried in turn.
+OPTIMISERS = ("lbfgs", "bfgs", "cg", "powell", "nm")
+
+
+def fit_with_any_optimiser(model):
+    """Fit with the first optimiser that manages it; report all failures if none does."""
+    failures = []
+    for method in OPTIMISERS:
+        try:
+            return model.fit(method=method)
+        except Exception as exc:  # noqa: BLE001 -- tried in turn, reported together
+            failures.append(f"{method}: {type(exc).__name__}: {exc}")
+    raise RuntimeError(
+        "no optimiser could fit the mixed model, which is what a near-singular "
+        "covariance looks like once it stops being merely a warning:\n  "
+        + "\n  ".join(failures)
     )
-    return model.fit(method="lbfgs")
 
 
 def r2_and_rmse(observed: np.ndarray, fitted: np.ndarray) -> tuple[float, float]:
