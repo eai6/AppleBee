@@ -207,7 +207,8 @@ data — so they ship together rather than in sequence.
       sub-second Lambdas over kilobytes of data.
 - [x] **Phase 3 - the map.** Done 2026-08-19. `/region` fan-out, packed payload, canvas map reusing
       plan 5's encoding, results cache keyed by parameter hash.
-- [ ] **Phase 4 - extension on request.** Queued admin-approved jobs for new years
+- [~] **Phase 4 - extension on request.** Queue and gating done 2026-08-19;
+      the Fargate worker that runs it needs the AWS account. Queued admin-approved jobs for new years
       or a new extent, provenance and SHA-256 written on every S3 object so the
       integrity story survives the move off disk. **Its first real job is the
       backfill deferred from Phase 1**, which makes this path load-bearing rather
@@ -354,6 +355,38 @@ horizontal spacing leaves gaps between the rows. The payload now carries
 cell as a cell. Caught by screenshotting the page, not by a test.
 
 Tests: 6 more in `tests/test_api.py`. Suite 91 → 97.
+
+### Phase 4 — the queue, done 2026-08-19
+
+`applebee/jobs.py` is the only route by which the input data ever changes. A
+visitor **requests**, an administrator **approves**, and exactly one worker at a
+time carries it out behind a lock. That shape is not caution — PRISM blocks IPs
+that fetch concurrently, and a block would take the platform's whole data supply
+with it.
+
+Three properties are what the tests actually pin:
+
+- **Two workers can never fetch at once.** The lock is taken before the job is
+  chosen, so two workers starting together cannot both decide to fetch. It
+  carries a heartbeat, so an 8-hour job is not mistaken for a dead one, and it
+  is reclaimable, so a worker that dies does not wedge the queue forever.
+- **A request runs nothing.** `POST /api/jobs` returns a queued job and its
+  plan; only approval makes it runnable.
+- **An unset admin secret fails closed.** With `APPLEBEE_ADMIN_TOKEN` absent,
+  approval is refused outright rather than left open.
+
+A job is **planned before it is approved**, without touching the network:
+`prism.estimate()` answers "5,114 files, 10.5 GB, about 6.4 hours" — which is
+what an administrator needs to know and what a requester rarely guesses. And a
+job's `command()` is the existing script, returned rather than reimplemented:
+`scripts/fetch_prism.py` is already paced and resumable, so the queue records an
+intention to run it rather than keeping a second copy of the fetching logic.
+
+Tests: `tests/test_jobs.py`, 18 new. Suite 97 → 115.
+
+**What is left needs the AWS account**: the Fargate task that claims and runs a
+job, the S3 result cache in place of the local directory, and the deployment
+itself. Everything above runs and is tested on a laptop.
 
 ## Risks
 

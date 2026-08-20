@@ -61,3 +61,6 @@ outputs/*.log
 
 # The thesis PDF is large; the replication notes beside it are tracked.
 docs/*.pdf
+
+# Extension-job state: runtime bookkeeping, rebuilt by whoever runs the worker.
+data/jobs/

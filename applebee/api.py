@@ -345,6 +345,54 @@ def region(params: ModelParams | dict | None = None, *, region: str = DEFAULT_RE
     return payload
 
 
+# Approving a job spends hours of somebody's fetch quota, so it is gated on a
+# token supplied to the deployment. Absent, approval is refused outright rather
+# than left open: an unset secret must fail closed.
+ADMIN_TOKEN_ENV = "APPLEBEE_ADMIN_TOKEN"
+
+
+def jobs(state: str | None = None) -> dict:
+    """The extension queue. Public, because what is queued is not a secret."""
+    from .jobs import JobStore
+
+    return {"jobs": [_job_summary(j) for j in JobStore().list(state)]}
+
+
+def request_job(kind: str, requested_by: str = "", **parameters) -> dict:
+    """Ask for the inputs to be extended. A request, not an instruction."""
+    from .jobs import JobStore
+
+    store = JobStore()
+    job = store.request(kind, requested_by=requested_by, **parameters)
+    return {"job": _job_summary(job), "plan": store.plan(job.id),
+            "note": "Requested. An administrator has to approve it before it runs."}
+
+
+def approve_job(job_id: str, token: str | None = None, by: str = "") -> dict:
+    """Approve a queued job. Administrators only."""
+    import os
+
+    from .jobs import JobStore
+
+    expected = os.environ.get(ADMIN_TOKEN_ENV)
+    if not expected:
+        raise PermissionError(
+            f"approval is disabled: {ADMIN_TOKEN_ENV} is not set on this deployment"
+        )
+    if not token or token != expected:
+        raise PermissionError("not authorised to approve jobs")
+    return {"job": _job_summary(JobStore().approve(job_id, by=by))}
+
+
+def _job_summary(job) -> dict:
+    from .jobs import command
+
+    return {"id": job.id, "kind": job.kind, "state": job.state,
+            "parameters": job.parameters, "requested_by": job.requested_by,
+            "requested_at": job.requested_at, "note": job.note,
+            "command": " ".join(command(job))}
+
+
 def provenance() -> dict:
     """Where the inputs came from and whether they are still what they were."""
     from . import provenance as prov

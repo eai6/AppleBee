@@ -16,6 +16,9 @@ Endpoints:
 ``GET  /api/point?lat=&lon=``    one location, year by year
 ``POST /api/point``              the same, with parameters in the body
 ``POST /api/region``             every cell in a region, packed
+``GET  /api/jobs``               the extension queue
+``POST /api/jobs``               request that the inputs be extended
+``POST /api/jobs/{id}/approve``  approve one — administrators only
 ``GET  /api/provenance``         where the inputs came from
 ===============================  ==========================================
 
@@ -53,11 +56,25 @@ class HttpError(Exception):
         self.message = message
 
 
-def route(method: str, path: str, query: dict, body: dict | None) -> tuple[int, dict]:
+def route(method: str, path: str, query: dict, body: dict | None,
+          headers: dict | None = None) -> tuple[int, dict]:
     """Answer one request. Pure, so the tests never start a server."""
     body = body or {}
+    headers = headers or {}
     if path == "/api/parameters" and method == "GET":
         return 200, api.parameters()
+    if path == "/api/jobs" and method == "GET":
+        return 200, api.jobs(query.get("state"))
+    if path == "/api/jobs" and method == "POST":
+        kind = body.get("kind")
+        if not kind:
+            raise HttpError(400, "kind is required: 'weather' or 'forage'")
+        return 200, api.request_job(kind, requested_by=body.get("requested_by", ""),
+                                    **body.get("parameters", {}))
+    if path.startswith("/api/jobs/") and path.endswith("/approve") and method == "POST":
+        job_id = path.split("/")[3]
+        return 200, api.approve_job(job_id, token=_admin_token(body, headers),
+                                    by=body.get("by", ""))
     if path == "/api/provenance" and method == "GET":
         return 200, api.provenance()
     if path == "/api/evaluate" and method in ("GET", "POST"):
@@ -79,12 +96,21 @@ def route(method: str, path: str, query: dict, body: dict | None) -> tuple[int, 
     raise HttpError(404, f"no route for {method} {path}")
 
 
-def answer(method: str, path: str, query: dict, body: dict | None) -> tuple[int, dict]:
+def _admin_token(body: dict, headers: dict) -> str | None:
+    """The token from the header if present, the body otherwise."""
+    lowered = {k.lower(): v for k, v in headers.items()}
+    return lowered.get("x-admin-token") or body.get("token")
+
+
+def answer(method: str, path: str, query: dict, body: dict | None,
+           headers: dict | None = None) -> tuple[int, dict]:
     """:func:`route`, with every failure turned into a status and a message."""
     try:
-        return route(method, path, query, body)
+        return route(method, path, query, body, headers)
     except HttpError as exc:
         return exc.status, {"error": exc.message}
+    except PermissionError as exc:
+        return 403, {"error": str(exc)}
     except (ValueError, TypeError, KeyError) as exc:
         # ModelParams raises ValueError naming the unknown keys; an unknown
         # region raises KeyError listing the alternatives. Both are useful.
@@ -120,7 +146,7 @@ def handler(event: dict, context=None) -> dict:
     except json.JSONDecodeError as exc:
         status, payload = 400, {"error": f"body is not JSON: {exc}"}
     else:
-        status, payload = answer(method, path, query, body)
+        status, payload = answer(method, path, query, body, event.get("headers") or {})
 
     return {
         "statusCode": status,
@@ -145,7 +171,7 @@ class _Handler(BaseHTTPRequestHandler):
         if not parsed.path.startswith("/api/"):
             return self._static(parsed.path)
         query = {k: v[0] for k, v in parse_qs(parsed.query).items()}
-        self._json(*answer("GET", parsed.path, query, None))
+        self._json(*answer("GET", parsed.path, query, None, dict(self.headers)))
 
     def do_POST(self) -> None:  # noqa: N802
         length = int(self.headers.get("content-length", 0))
@@ -155,7 +181,7 @@ class _Handler(BaseHTTPRequestHandler):
             body = json.loads(raw) if raw else {}
         except json.JSONDecodeError as exc:
             return self._json(400, {"error": f"body is not JSON: {exc}"})
-        self._json(*answer("POST", parsed.path, {}, body))
+        self._json(*answer("POST", parsed.path, {}, body, dict(self.headers)))
 
     def _static(self, path: str) -> None:
         target = INDEX if path in ("/", "/index.html") else STATIC / path.lstrip("/")
