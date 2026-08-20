@@ -32,6 +32,7 @@ import argparse
 import base64
 import json
 import sys
+import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -113,7 +114,11 @@ def answer(method: str, path: str, query: dict, body: dict | None,
         return 403, {"error": str(exc)}
     except (ValueError, TypeError, KeyError) as exc:
         # ModelParams raises ValueError naming the unknown keys; an unknown
-        # region raises KeyError listing the alternatives. Both are useful.
+        # region raises KeyError listing the alternatives. Both are useful to a
+        # caller -- but the traceback is only useful in the log, and a 400
+        # without one made a deployment failure take far longer to find than it
+        # should have.
+        traceback.print_exc()
         return 400, {"error": str(exc).strip("'")}
 
 

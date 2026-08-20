@@ -83,6 +83,15 @@ def build_design(
     return design
 
 
+# One observation per group makes the covariance singular, which leaves this fit
+# sitting on the edge of what the optimiser can do: the same data converges with
+# a warning on macOS's Accelerate and raises "Singular matrix" on Linux's
+# OpenBLAS. The degeneracy is the finding -- it is why the manuscript reports the
+# slope as not significant -- but it should not depend on which machine ran it,
+# so the optimisers are tried in order rather than trusting one.
+OPTIMISERS = ("lbfgs", "bfgs", "cg", "powell")
+
+
 def fit_lme(design: pd.DataFrame):
     """Fit Equation 4.11: observed ~ predicted, random intercept by year."""
     import statsmodels.formula.api as smf
@@ -90,7 +99,18 @@ def fit_lme(design: pd.DataFrame):
     frame = design.copy()
     frame["year_group"] = frame["year"].astype(str)
     model = smf.mixedlm("observed ~ predicted", data=frame, groups=frame["year_group"])
-    return model.fit(method="lbfgs")
+
+    failures = []
+    for method in OPTIMISERS:
+        try:
+            return model.fit(method=method)
+        except Exception as exc:  # noqa: BLE001 -- tried in turn, reported together
+            failures.append(f"{method}: {type(exc).__name__}: {exc}")
+    raise RuntimeError(
+        "the mixed model could not be fitted by any optimiser, which is what a "
+        "singular random-effects covariance looks like when it stops being "
+        "merely a warning:\n  " + "\n  ".join(failures)
+    )
 
 
 def evaluate(model: AppleBee, years: range = MONITORING_YEARS) -> dict:
