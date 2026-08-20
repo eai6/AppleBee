@@ -20,6 +20,7 @@ infrastructure diff.
 """
 
 import json
+import os
 
 import pulumi
 import pulumi_aws as aws
@@ -30,7 +31,10 @@ name = config.get("name") or "applebee"
 memory_mb = config.get_int("memoryMb") or 3008
 timeout_seconds = config.get_int("timeoutSeconds") or 300
 log_retention_days = config.get_int("logRetentionDays") or 14
-admin_token = config.get_secret("adminToken")
+# From the environment in CI, where it arrives as a GitHub secret, or from
+# stack config when a human runs pulumi locally. Absent, approval of extension
+# jobs is refused outright rather than left open.
+admin_token = config.get_secret("adminToken") or os.environ.get("APPLEBEE_ADMIN_TOKEN")
 
 account = aws.get_caller_identity()
 suffix = account.account_id[-6:]

@@ -62,5 +62,7 @@ jobs:
           stack-name: production
           work-dir: infra
           cloud-url: s3://${{ secrets.PULUMI_STATE_BUCKET }}
+          upsert: true          # create the stack on the first run
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
+          APPLEBEE_ADMIN_TOKEN: ${{ secrets.APPLEBEE_ADMIN_TOKEN }}
