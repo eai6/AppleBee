@@ -24,6 +24,8 @@ never need to know.
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -37,6 +39,12 @@ from .weather import WeatherGrid, load_matrices, load_weather
 # How a region's weather is stored on disk.
 MATRICES = "matrices"  # {key}.values.npy + .dates.npy + .cells.parquet
 WIDE_CSV = "csv"  # the original PRISM export, one column per day
+
+# The registry lives beside this module as data, not in it, so a deployment can
+# add a region by writing a file rather than by editing code. APPLEBEE_REGIONS
+# names a second file whose entries extend and override these.
+REGIONS_JSON = Path(__file__).with_name("regions.json")
+REGIONS_ENV = "APPLEBEE_REGIONS"
 
 
 @dataclass(frozen=True)
@@ -60,11 +68,18 @@ class Dataset:
     ppt: str
     forage_csv: Path
     description: str = ""
+    base_url: str | None = None
 
     # -- availability -------------------------------------------------------
 
     def paths(self) -> dict[str, Path]:
-        """Every file this dataset needs, whether or not it exists."""
+        """Every file this dataset needs, whether or not it exists.
+
+        Empty for a remote dataset: there is nothing on this disk to check, and
+        reporting absent local files for one would be actively misleading.
+        """
+        if self.base_url:
+            return {}
         if self.form == MATRICES:
             weather = {f"{v} ({p})": self.weather_dir / f"{k}.{p}"
                        for v, k in (("tmean", self.tmean), ("ppt", self.ppt))
@@ -94,7 +109,16 @@ class Dataset:
     # -- loading ------------------------------------------------------------
 
     def weather(self) -> tuple[WeatherGrid, WeatherGrid]:
-        """``(tmean, ppt)`` for this region."""
+        """``(tmean, ppt)`` for this region.
+
+        A remote dataset reads in byte ranges instead, so a run pays for the
+        cells it touches rather than the region it belongs to.
+        """
+        if self.base_url:
+            from .remote import load_matrices_remote
+
+            return (load_matrices_remote(self.base_url, self.tmean),
+                    load_matrices_remote(self.base_url, self.ppt))
         self.require()
         if self.form == MATRICES:
             return (load_matrices(self.weather_dir, self.tmean),
@@ -155,29 +179,54 @@ class Dataset:
 # Registry
 # ---------------------------------------------------------------------------
 
-DATASETS: dict[str, Dataset] = {
-    "pennsylvania": Dataset(
-        name="pennsylvania",
-        weather_dir=config.PA_WEATHER_DIR, form=MATRICES,
-        tmean=config.PA_TMEAN_KEY, ppt=config.PA_PPT_KEY,
-        forage_csv=config.PA_FORAGE_CSV,
-        description="the chapter's own extent: 7,452 cells, 1990-2024",
-    ),
-    "northeast": Dataset(
-        name="northeast",
-        weather_dir=config.NE_WEATHER_DIR, form=MATRICES,
-        tmean=config.NE_TMEAN_KEY, ppt=config.NE_PPT_KEY,
-        forage_csv=config.NE_FORAGE_CSV,
-        description="13 states, 2013-2018",
-    ),
-    "conus": Dataset(
-        name="conus",
-        weather_dir=config.CONUS_WEATHER_DIR, form=MATRICES,
-        tmean=config.CONUS_TMEAN_KEY, ppt=config.CONUS_PPT_KEY,
-        forage_csv=config.CONUS_FORAGE_CSV,
-        description="every land cell of the contiguous United States, 2013-2018",
-    ),
-}
+ENTRY_KEYS = {"weather_dir", "form", "tmean", "ppt", "forage_csv",
+              "description", "base_url"}
+
+
+def load_registry(path: Path | str) -> dict[str, Dataset]:
+    """Read region definitions from a JSON file.
+
+    Paths are relative to ``data/inputs`` unless absolute, so a definition is
+    portable between a clone and a deployment. An unknown key raises rather than
+    being ignored, on the same principle as :class:`~applebee.config.ModelParams`:
+    a typo that quietly changed what a run reads would be worse than a stop.
+
+    A remote entry carries ``base_url`` instead of local weather, and its
+    ``weather_dir`` is unused -- nothing reads this disk for it.
+    """
+    entries = json.loads(Path(path).read_text())
+    registry = {}
+    for name, entry in entries.items():
+        unknown = set(entry) - ENTRY_KEYS
+        if unknown:
+            raise ValueError(
+                f"region {name!r} has unknown key(s) {sorted(unknown)}; "
+                f"expected any of {sorted(ENTRY_KEYS)}"
+            )
+        under_inputs = lambda value: (Path(value) if Path(value).is_absolute()
+                                      else config.INPUTS / value)
+        base_url = entry.get("base_url")
+        forage = entry["forage_csv"]
+        registry[name] = Dataset(
+            name=name,
+            weather_dir=under_inputs(entry.get("weather_dir", f"weather/{name}")),
+            form=entry.get("form", MATRICES),
+            tmean=entry["tmean"],
+            ppt=entry["ppt"],
+            # A remote region's forage index is a URL, which pandas reads directly.
+            forage_csv=forage if base_url else under_inputs(forage),
+            description=entry.get("description", ""),
+            base_url=base_url,
+        )
+    return registry
+
+
+DATASETS: dict[str, Dataset] = load_registry(REGIONS_JSON)
+
+# A deployment adds regions by writing a file and naming it here -- the
+# acquisition worker extends coverage without a code change or a release.
+if os.environ.get(REGIONS_ENV):
+    DATASETS.update(load_registry(os.environ[REGIONS_ENV]))
 
 # New York is deliberately absent: its forage index is per site and per radius,
 # not a (col, row, year) grid, so it evaluates the egg-production sub-model

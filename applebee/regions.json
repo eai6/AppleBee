@@ -1,0 +1,26 @@
+{
+  "pennsylvania": {
+    "weather_dir": "weather/pennsylvania",
+    "form": "matrices",
+    "tmean": "pa_tmean",
+    "ppt": "pa_ppt",
+    "forage_csv": "forage/pa_forage_spring_lonsdorf.csv",
+    "description": "the chapter's own extent: 7,452 cells, 1990-2024"
+  },
+  "northeast": {
+    "weather_dir": "weather/northeast",
+    "form": "matrices",
+    "tmean": "northeast_tmean",
+    "ppt": "northeast_ppt",
+    "forage_csv": "forage/northeast_forage_spring_lonsdorf.csv",
+    "description": "13 states, 2013-2018"
+  },
+  "conus": {
+    "weather_dir": "weather/conus",
+    "form": "matrices",
+    "tmean": "conus_tmean",
+    "ppt": "conus_ppt",
+    "forage_csv": "forage/conus_forage_spring_lonsdorf.csv",
+    "description": "every land cell of the contiguous United States, 2013-2018"
+  }
+}
