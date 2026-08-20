@@ -280,6 +280,12 @@ the package directory, so any deployment that copies the package gets it.
 | SHA | Date | Subject |
 |---|---|---|
 | `6c48245` | 2026-08-19 | Read weather in byte ranges, and define regions in data |
+| `3c183a5` | 2026-08-19 | Answer the grower's question and the reviewer's from one spine |
+| `3f3d6be` | 2026-08-19 | Send the whole region to the browser in 1.3 MB |
+| `68eea2f` | 2026-08-19 | Queue data extension behind one worker and an admin token |
+| `7276d38` | 2026-08-20 | Deploy from GitHub Actions with Pulumi, into ecomorph |
+| `b4af4c9` | 2026-08-20 | Serve from App Runner: public, cheaper, and nothing to patch |
+| `14e64f7` | 2026-08-20 | Take the regional context from the cached run, not a local file |
 
 ### Phase 2 — done 2026-08-19
 
@@ -387,6 +393,20 @@ Tests: `tests/test_jobs.py`, 18 new. Suite 97 → 115.
 **What is left needs the AWS account**: the Fargate task that claims and runs a
 job, the S3 result cache in place of the local directory, and the deployment
 itself. Everything above runs and is tested on a laptop.
+
+### Live
+
+**https://wy3vnrdipv.us-east-1.awsapprunner.com** — the page, both evaluations,
+a point forecast anywhere in the Northeast, and the map of all 44,756 cells.
+Deployed by GitHub Actions on every push to `main`.
+
+| endpoint | live |
+|---|---|
+| page | 200, 0.22 s |
+| `/api/parameters` | 200, 0.16 s |
+| `/api/point` | 200, **0.17 s** warm |
+| `/api/evaluate` | 200, 3.2 s — R² 0.510 and 0.803, p = 0.358 |
+| `/api/region` | 200, 1.3 MB from cache, 0.8 s |
 
 ### Deployment — applied 2026-08-20
 
