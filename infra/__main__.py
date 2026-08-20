@@ -46,7 +46,7 @@ suffix = account.account_id[-6:]
 data = aws.s3.BucketV2(
     "data",
     bucket=f"{name}-data-{suffix}",
-    tags={"Project": name, "Contents": "PRISM weather and CDL forage, derived"},
+    tags={"Project": name, "Contents": "prism-weather-and-cdl-forage"},
 )
 
 # Private: PRISM's 4 km data is redistributable, but paying egress for anyone
@@ -130,6 +130,7 @@ image = docker_build.Image(
 
 role = aws.iam.Role(
     "api-role",
+    name=f"{name}-api-role",
     assume_role_policy=json.dumps({
         "Version": "2012-10-17",
         "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole",
