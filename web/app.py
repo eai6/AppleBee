@@ -138,6 +138,9 @@ def handler(event: dict, context=None) -> dict:
     path = event.get("rawPath", "/")
     query = {k: v for k, v in (event.get("queryStringParameters") or {}).items()}
 
+    if not path.startswith("/api/"):
+        return _page(path)
+
     raw = event.get("body")
     if raw and event.get("isBase64Encoded"):
         raw = base64.b64decode(raw).decode()
@@ -155,6 +158,24 @@ def handler(event: dict, context=None) -> dict:
             "cache-control": f"public, max-age={CACHE_SECONDS}" if status == 200 else "no-store",
         },
         "body": json.dumps(payload, default=str),
+    }
+
+
+def _page(path: str) -> dict:
+    """The single-page app, served by the same function as the API.
+
+    One Function URL answers everything, so the first deployment needs no second
+    bucket and no distribution. A CDN goes in front later without moving it.
+    """
+    target = INDEX if path in ("/", "/index.html") else STATIC / path.lstrip("/")
+    if not target.is_file() or STATIC not in target.resolve().parents:
+        return {"statusCode": 404, "headers": {"content-type": "application/json"},
+                "body": json.dumps({"error": f"no such page {path}"})}
+    return {
+        "statusCode": 200,
+        "headers": {"content-type": "text/html; charset=utf-8",
+                    "cache-control": "public, max-age=300"},
+        "body": target.read_text(),
     }
 
 

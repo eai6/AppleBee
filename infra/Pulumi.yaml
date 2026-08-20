@@ -1,0 +1,8 @@
+name: applebee
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: >
+  AppleBee on AWS: one Lambda serving the page and the API, reading weather from
+  S3 in byte ranges, with nothing running when nobody is asking.

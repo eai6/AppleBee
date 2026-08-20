@@ -1,0 +1,66 @@
+# Deploy the API to AWS.
+#
+# Authentication is OIDC: GitHub mints a short-lived token, AWS trusts it only
+# from this repository on this branch, and no access key exists to leak. The
+# role and the state bucket are created once by scripts/bootstrap_aws.py.
+#
+# Only paths that change what is deployed trigger this. A manuscript edit does
+# not rebuild a container image.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - applebee/**
+      - web/**
+      - infra/**
+      - deploy/**
+      - .github/workflows/deploy.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write      # to request the OIDC token
+  contents: read
+
+jobs:
+  pulumi:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: applebee-deploy-${{ github.run_id }}
+
+      # buildx, so the image layers can be cached in ECR between runs and a
+      # deploy does not reinstall 382 MB of scientific Python every time.
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Install Pulumi's dependencies
+        working-directory: infra
+        run: |
+          python -m venv venv
+          ./venv/bin/pip install --upgrade pip
+          ./venv/bin/pip install -r requirements.txt
+
+      - uses: pulumi/actions@v6
+        with:
+          command: up
+          stack-name: production
+          work-dir: infra
+          cloud-url: s3://${{ secrets.PULUMI_STATE_BUCKET }}
+        env:
+          PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}

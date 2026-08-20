@@ -126,6 +126,12 @@ PACK_CEILING = 65535
 # nothing to serve and one that pays for the same 268,536 cell-years repeatedly.
 REGION_CACHE = CACHE / "web"
 
+# Set by the deployment. Lambda's own /tmp dies with the container, so a cache
+# that is not shared is a cache that never hits: without this, every cold
+# container pays the full 39 seconds again.
+CACHE_BUCKET_ENV = "APPLEBEE_CACHE_BUCKET"
+CACHE_PREFIX = "runs"
+
 
 # ---------------------------------------------------------------------------
 # Cached inputs -- loaded once per process, reused by every warm invocation
@@ -438,16 +444,42 @@ def _region_key(region: str, years: list[int], params: ModelParams,
     return f"{region}-{digest[:16]}"
 
 
+def _cache_bucket() -> str | None:
+    import os
+
+    return os.environ.get(CACHE_BUCKET_ENV)
+
+
 def _cache_read(key: str) -> dict | None:
-    path = REGION_CACHE / f"{key}.json"
-    if not path.exists():
-        return None
-    payload = json.loads(path.read_text())
+    bucket = _cache_bucket()
+    if bucket:
+        import boto3
+        import botocore
+
+        try:
+            body = boto3.client("s3").get_object(
+                Bucket=bucket, Key=f"{CACHE_PREFIX}/{key}.json")["Body"].read()
+        except botocore.exceptions.ClientError:
+            return None            # a miss, not a failure
+        payload = json.loads(body)
+    else:
+        path = REGION_CACHE / f"{key}.json"
+        if not path.exists():
+            return None
+        payload = json.loads(path.read_text())
     payload["cached"] = True
     return payload
 
 
 def _cache_write(key: str, payload: dict) -> None:
+    bucket = _cache_bucket()
+    if bucket:
+        import boto3
+
+        boto3.client("s3").put_object(
+            Bucket=bucket, Key=f"{CACHE_PREFIX}/{key}.json",
+            Body=json.dumps(payload).encode(), ContentType="application/json")
+        return
     REGION_CACHE.mkdir(parents=True, exist_ok=True)
     (REGION_CACHE / f"{key}.json").write_text(json.dumps(payload))
 

@@ -194,7 +194,9 @@ def load_registry(path: Path | str) -> dict[str, Dataset]:
     A remote entry carries ``base_url`` instead of local weather, and its
     ``weather_dir`` is unused -- nothing reads this disk for it.
     """
-    entries = json.loads(Path(path).read_text())
+    # ``${APPLEBEE_DATA_BUCKET}`` and friends are expanded here, so one shipped
+    # file serves a clone reading local paths and a deployment reading S3.
+    entries = json.loads(os.path.expandvars(Path(path).read_text()))
     registry = {}
     for name, entry in entries.items():
         unknown = set(entry) - ENTRY_KEYS
@@ -205,6 +207,10 @@ def load_registry(path: Path | str) -> dict[str, Dataset]:
             )
         under_inputs = lambda value: (Path(value) if Path(value).is_absolute()
                                       else config.INPUTS / value)
+        if entry.get("base_url", "").startswith("$"):
+            raise ValueError(
+                f"region {name!r} names an unset variable in base_url: {entry['base_url']}"
+            )
         base_url = entry.get("base_url")
         forage = entry["forage_csv"]
         registry[name] = Dataset(

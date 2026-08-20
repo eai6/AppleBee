@@ -1,0 +1,31 @@
+# The model's own tests, on every push and pull request.
+#
+# The large inputs are not in the repository and are not fetched here: the
+# data-dependent tests skip themselves when the matrices are absent, which is
+# why this runs in seconds rather than downloading gigabytes to prove that a
+# pure function still works.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install what the tests import
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r deploy/requirements-lambda.txt pytest requests
+
+      - name: Run the suite
+        run: pytest -q

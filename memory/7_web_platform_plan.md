@@ -388,6 +388,54 @@ Tests: `tests/test_jobs.py`, 18 new. Suite 97 → 115.
 job, the S3 result cache in place of the local directory, and the deployment
 itself. Everything above runs and is tested on a laptop.
 
+### Deployment — written 2026-08-20, not yet applied
+
+Deployed by GitHub Actions with Pulumi in Python, into the **ecomorph** account.
+Authentication is OIDC: GitHub mints a short-lived token, AWS trusts it only
+from `eai6/AppleBee` on `main`, and no access key exists to leak.
+
+**Packaging is a container image, not a zip**, because numpy, pandas, pyarrow,
+scipy and statsmodels come to **382 MB** against the 250 MB zip ceiling. pandas
+3.0 makes pyarrow a hard dependency, so it cannot be trimmed away. Dependencies
+install before the source is copied, so editing the model pushes megabytes.
+
+**One Lambda serves the page and the API.** No second bucket, no distribution,
+no CDN in the first stack — a Function URL is free where API Gateway is $1-3.50
+per million, and nothing here needs an edge cache to answer a question that
+touches 18 KB. A CDN goes in front later without moving anything.
+
+The stack creates: a private data bucket, a cache bucket with a 90-day
+expiry on cached runs, an ECR repository keeping five images, a read-only
+execution role, a log group **with retention set at creation** (the quiet way a
+cheap stack stops being one), the function, and its URL.
+
+| File | What it is |
+|---|---|
+| `infra/__main__.py` | the stack |
+| `deploy/Dockerfile` | the image |
+| `deploy/regions.aws.json` | the registry, naming `s3://${APPLEBEE_DATA_BUCKET}` |
+| `scripts/bootstrap_aws.py` | the once-only OIDC provider, deploy role and state bucket |
+| `scripts/upload_data.py` | 2.6 GB of inputs, deliberately outside the stack |
+| `.github/workflows/` | tests on every push, deploy on `main` |
+
+The deploy role is **not** an administrator: PowerUserAccess, which excludes
+IAM, plus a narrow policy for roles named `applebee-*`, so a compromised
+workflow can create the stack's own execution role and nothing that escalates.
+
+Two seams were added to the package for this, both small: `S3Ranges` alongside
+`HttpRanges` and `FileRanges`, so the Lambda reads a private bucket through its
+own role; and `${VAR}` expansion in the region registry, so one shipped file
+serves a clone reading local paths and a deployment reading S3.
+
+**Verified locally:** the suite passes with the inputs hidden (97 passed, 18
+skipped in 5 s), which is what CI will see; the Pulumi program compiles; the
+workflows parse. **Not verified:** the image build, which failed on this machine
+for lack of disk — the volume is at 99%, 6.8 GB free — and the stack itself,
+which has never been applied. The first CI run is the real test of both.
+
+**Blocked on:** `aws login --profile ecomorph`. Everything after that is
+scripted.
+
 ## Risks
 
 - **PRISM IP block** would halt data supply. Single-worker lock, conservative

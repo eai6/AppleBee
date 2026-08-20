@@ -1,0 +1,16 @@
+{
+  "northeast": {
+    "base_url": "s3://${APPLEBEE_DATA_BUCKET}/weather/northeast",
+    "tmean": "northeast_tmean",
+    "ppt": "northeast_ppt",
+    "forage_csv": "s3://${APPLEBEE_DATA_BUCKET}/forage/northeast_forage_spring_lonsdorf.csv",
+    "description": "13 states, 2013-2018, read from S3 in byte ranges"
+  },
+  "pennsylvania": {
+    "base_url": "s3://${APPLEBEE_DATA_BUCKET}/weather/pennsylvania",
+    "tmean": "pa_tmean",
+    "ppt": "pa_ppt",
+    "forage_csv": "s3://${APPLEBEE_DATA_BUCKET}/forage/pa_forage_spring_lonsdorf.csv",
+    "description": "the monitoring site's region, for the Objective 3 evaluation"
+  }
+}

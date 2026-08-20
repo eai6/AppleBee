@@ -1,0 +1,8 @@
+# Only what the API imports. boto3 comes with the Lambda runtime, and the
+# plotting, geospatial and machine-learning packages in requirements.txt are for
+# the notebook and the acquisition scripts, not for answering a request.
+numpy==2.5.1
+pandas==3.0.3
+pyarrow==25.0.0
+scipy==1.18.0
+statsmodels==0.14.6

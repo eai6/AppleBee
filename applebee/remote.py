@@ -85,6 +85,36 @@ class HttpRanges:
 
 
 @dataclass
+class S3Ranges:
+    """Byte ranges from a private S3 object, through the Lambda's own role.
+
+    Kept separate from :class:`HttpRanges` because a bucket the platform can
+    read but the public cannot is the point: the data is redistributable, but
+    paying egress for anyone who wants 1.7 GB of it is not.
+    """
+
+    bucket: str
+    key: str
+    client: object | None = None
+
+    def _s3(self):
+        if self.client is None:
+            import boto3  # provided by the Lambda runtime
+
+            self.client = boto3.client("s3")
+        return self.client
+
+    def read(self, offset: int, length: int) -> bytes:
+        response = self._s3().get_object(
+            Bucket=self.bucket, Key=self.key,
+            Range=f"bytes={offset}-{offset + length - 1}")
+        return response["Body"].read()
+
+    def read_all(self) -> bytes:
+        return self._s3().get_object(Bucket=self.bucket, Key=self.key)["Body"].read()
+
+
+@dataclass
 class FileRanges:
     """Byte ranges from a local file.
 
@@ -208,8 +238,7 @@ def load_matrices_remote(base: str | Path, key: str, *, timeout: float = 30.0,
                          row_cache: int = DEFAULT_ROW_CACHE) -> WeatherGrid:
     """A :class:`~applebee.weather.WeatherGrid` backed by ranged reads.
 
-    ``base`` is a URL prefix (``https://.../weather/northeast``) or a local
-    directory. The dates and the cell table are small and are read whole; only
+    ``base`` is an ``s3://bucket/prefix``, a URL prefix, or a local directory. The dates and the cell table are small and are read whole; only
     the matrix is left remote.
 
     Args:
@@ -218,12 +247,16 @@ def load_matrices_remote(base: str | Path, key: str, *, timeout: float = 30.0,
         timeout: Seconds, HTTP only.
         row_cache: Cells to keep in memory; ~8.8 KB each for a six-year matrix.
     """
-    is_url = isinstance(base, str) and base.startswith(("http://", "https://"))
+    base_str = str(base)
 
     def reader(suffix: str) -> Ranges:
-        if is_url:
-            return HttpRanges(f"{base.rstrip('/')}/{key}.{suffix}", timeout=timeout)
-        return FileRanges(Path(base) / f"{key}.{suffix}")
+        name = f"{key}.{suffix}"
+        if base_str.startswith("s3://"):
+            bucket, _, prefix = base_str[5:].partition("/")
+            return S3Ranges(bucket, f"{prefix.rstrip('/')}/{name}" if prefix else name)
+        if base_str.startswith(("http://", "https://")):
+            return HttpRanges(f"{base_str.rstrip('/')}/{name}", timeout=timeout)
+        return FileRanges(Path(base) / name)
 
     dates = np.load(io.BytesIO(reader("dates.npy").read_all()))
     cells = pd.read_parquet(io.BytesIO(reader("cells.parquet").read_all()))

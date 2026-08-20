@@ -15,6 +15,20 @@ import numpy as np
 import pandas as pd
 
 
+def _open(path):
+    """A local path, a URL, or a private ``s3://`` object pandas cannot read."""
+    source = str(path)
+    if not source.startswith("s3://"):
+        return path
+    import io
+
+    import boto3
+
+    bucket, _, key = source[5:].partition("/")
+    body = boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
+    return io.BytesIO(body)
+
+
 @dataclass
 class ForageGrid:
     """Spring forage index by (grid cell, year).
@@ -32,7 +46,7 @@ class ForageGrid:
 
     @classmethod
     def load(cls, path: Path, column: str = "Forage_spring_1km") -> "ForageGrid":
-        frame = pd.read_csv(path)
+        frame = pd.read_csv(_open(path))
         if column not in frame.columns:
             raise ValueError(f"{path.name} has no column {column!r}")
         frame = frame[["col", "row", "year", column]].dropna(subset=[column])
