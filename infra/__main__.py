@@ -153,27 +153,80 @@ function = aws.lambda_.Function(
     opts=pulumi.ResourceOptions(depends_on=[logs]),
 )
 
+# The URL is signed, not open. An anonymous Function URL returns 403 in this
+# account whatever its resource policy says -- the organisation's guardrails
+# forbid public function URLs -- so CloudFront fronts it and signs every request
+# with SigV4 through an Origin Access Control. That also buys the CDN, TLS and a
+# place to attach a custom domain later, at no cost inside the free tier.
 url = aws.lambda_.FunctionUrl(
     "api-url",
     function_name=function.name,
-    authorization_type="NONE",
+    authorization_type="AWS_IAM",
     cors=aws.lambda_.FunctionUrlCorsArgs(
         allow_origins=["*"], allow_methods=["GET", "POST"],
         allow_headers=["content-type", "x-admin-token"], max_age=86400),
 )
 
-# authorization_type="NONE" only says the URL does not check IAM. The function
-# still refuses everyone until its resource policy allows the invoke, which is
-# why a freshly created URL answers 403 to its own owner.
-aws.lambda_.Permission(
-    "api-public",
-    action="lambda:InvokeFunctionUrl",
-    function=function.name,
-    principal="*",
-    function_url_auth_type="NONE",
+access = aws.cloudfront.OriginAccessControl(
+    "api-oac",
+    name=f"{name}-api",
+    origin_access_control_origin_type="lambda",
+    signing_behavior="always",
+    signing_protocol="sigv4",
 )
 
-pulumi.export("url", url.function_url)
+# AWS-managed policies. CachingDisabled because these answers are already cached
+# in S3 by parameter hash, and AllViewerExceptHostHeader because a Lambda URL
+# origin rejects a forwarded Host header.
+CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+ALL_VIEWER_EXCEPT_HOST = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+
+distribution = aws.cloudfront.Distribution(
+    "api-cdn",
+    enabled=True,
+    comment=f"{name}: the model, its evaluations and its map",
+    default_root_object="",
+    origins=[aws.cloudfront.DistributionOriginArgs(
+        origin_id="lambda",
+        domain_name=url.function_url.apply(
+            lambda u: u.removeprefix("https://").rstrip("/")),
+        origin_access_control_id=access.id,
+        custom_origin_config=aws.cloudfront.DistributionOriginCustomOriginConfigArgs(
+            http_port=80, https_port=443,
+            origin_protocol_policy="https-only",
+            origin_ssl_protocols=["TLSv1.2"],
+        ),
+    )],
+    default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
+        target_origin_id="lambda",
+        viewer_protocol_policy="redirect-to-https",
+        allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+        cached_methods=["GET", "HEAD"],
+        cache_policy_id=CACHING_DISABLED,
+        origin_request_policy_id=ALL_VIEWER_EXCEPT_HOST,
+        compress=True,
+    ),
+    restrictions=aws.cloudfront.DistributionRestrictionsArgs(
+        geo_restriction=aws.cloudfront.DistributionRestrictionsGeoRestrictionArgs(
+            restriction_type="none"),
+    ),
+    viewer_certificate=aws.cloudfront.DistributionViewerCertificateArgs(
+        cloudfront_default_certificate=True),
+    price_class="PriceClass_100",     # North America and Europe; the audience
+)
+
+# Only this distribution may invoke the function, and only through its URL.
+aws.lambda_.Permission(
+    "api-from-cloudfront",
+    action="lambda:InvokeFunctionUrl",
+    function=function.name,
+    principal="cloudfront.amazonaws.com",
+    source_arn=distribution.arn,
+    function_url_auth_type="AWS_IAM",
+)
+
+pulumi.export("url", distribution.domain_name.apply(lambda d: f"https://{d}"))
+pulumi.export("origin_url", url.function_url)
 pulumi.export("data_bucket", data.bucket)
 pulumi.export("cache_bucket", cache.bucket)
 pulumi.export("image", image_uri)
