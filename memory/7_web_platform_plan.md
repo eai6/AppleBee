@@ -267,6 +267,12 @@ is the code that makes deployment possible, and every piece of it is useful and
 tested on a laptop. The one packaging note for later: `regions.json` lives inside
 the package directory, so any deployment that copies the package gets it.
 
+## Commits
+
+| SHA | Date | Subject |
+|---|---|---|
+| `6c48245` | 2026-08-19 | Read weather in byte ranges, and define regions in data |
+
 ## Risks
 
 - **PRISM IP block** would halt data supply. Single-worker lock, conservative
