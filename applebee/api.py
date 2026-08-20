@@ -163,7 +163,21 @@ def _weather_years(name: str) -> list[int]:
 
 @lru_cache(maxsize=4)
 def _regional_means(name: str) -> np.ndarray | None:
-    """Per-cell six-year mean offspring, for context. None if never simulated."""
+    """Per-cell six-year mean offspring, for context. None if never simulated.
+
+    Taken from the cached region run under default parameters, which is the same
+    answer the map draws and is wherever the cache lives -- a local directory on
+    a laptop, S3 in the deployment. The simulation parquet is the fallback for a
+    clone that has run the model but never the platform.
+    """
+    try:
+        cached = _cache_read(_region_key(name, _weather_years(name), ModelParams(), None))
+    except Exception:               # noqa: BLE001 -- context is optional
+        cached = None
+    if cached:
+        scale = cached["encoding"]["scale"]
+        return np.frombuffer(base64.b64decode(cached["mean"]), dtype="uint16") / scale
+
     path = OUTPUTS / f"{name}_simulation.parquet"
     if not path.exists():
         return None

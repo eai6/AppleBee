@@ -235,7 +235,8 @@ function series(springs) {
 function renderPoint(data) {
   const springs = data.springs;
   const context = data.context || {};
-  const mean = context.mean_offspring_per_female;
+  const mean = springs.reduce((total, s) => total + s.offspring_per_female, 0)
+             / (springs.length || 1);
   $("point-out").innerHTML = `
     <div class="headline"><b>${round(mean, 1)}</b>
       <span>offspring per female, mean of ${springs.length} springs</span></div>
