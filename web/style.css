@@ -221,6 +221,8 @@
   :root[data-theme="dark"] .leaflet-tile-pane,
   .dark-tiles .leaflet-tile-pane { filter:saturate(.3) brightness(.75) contrast(1.05); }
   #grid-pane canvas { pointer-events:none; }
+  .leaflet-pane.state-pane path { stroke:#3d4a45; }
+  :root[data-theme="dark"] .leaflet-pane.state-pane path { stroke:#c3d0ca; }
   .searchbox { position:relative; }
   .matches { position:absolute; z-index:5; left:0; right:0; top:calc(100% + 5px);
              background:var(--panel); border:1px solid var(--line); border-radius:9px;

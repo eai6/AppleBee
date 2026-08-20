@@ -50,7 +50,8 @@ INDEX = STATIC / "index.html"
 
 CONTENT_TYPES = {".html": "text/html; charset=utf-8",
                  ".js": "text/javascript; charset=utf-8",
-                 ".css": "text/css; charset=utf-8"}
+                 ".css": "text/css; charset=utf-8",
+                 ".geojson": "application/geo+json"}
 
 # Answers are deterministic in their inputs, so a shared cache is free to use.
 # The platform's cost model depends on it: identical requests are the common

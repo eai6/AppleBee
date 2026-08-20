@@ -53,8 +53,25 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
 // Exposed so an end-to-end check can drive the map the way a person does.
 window.__map = map;
 
+const linePane = map.createPane("state-pane");
+linePane.style.zIndex = 460;
+linePane.style.pointerEvents = "none";
+fetch("/states.geojson").then(r => r.json()).then(states => {
+  L.geoJSON(states, {
+    pane: "state-pane",
+    style: {color: "#3d4a45", weight: 1, opacity: .55, fill: false,
+            interactive: false},
+  }).addTo(map);
+}).catch(() => {});   // a missing outline is cosmetic, not fatal
+
 const pane = map.createPane("grid-pane");
 pane.style.zIndex = 450;
+
+// Leaflet's own overlay pane sits at 400, below the data canvas at 450, so a
+// drawn shape put there is painted over by the grid. Selections get their own
+// pane above everything.
+const drawPane = map.createPane("draw-pane");
+drawPane.style.zIndex = 470;
 const canvas = L.DomUtil.create("canvas", "", pane);
 const ctx = canvas.getContext("2d");
 let dpr = 1;
@@ -132,12 +149,23 @@ function drawSketch() {
   if (sketch) map.removeLayer(sketch);
   sketch = null;
   if (!state.polygon.length) return;
-  const style = {color: "#34675C", weight: 2, dashArray: state.polygon.closed ? null : "5 4",
-                 fillOpacity: state.polygon.closed ? .16 : 0};
-  sketch = state.polygon.closed
-    ? L.polygon(state.polygon.map(p => [p[1], p[0]]), style)
-    : L.polyline(state.polygon.map(p => [p[1], p[0]]), style);
-  sketch.addTo(map);
+
+  const points = state.polygon.map(p => [p[1], p[0]]);
+  const closed = state.polygon.closed;
+  const shape = (style) => closed ? L.polygon(points, style) : L.polyline(points, style);
+  sketch = L.layerGroup([
+    // A white casing under the line, so it reads against dark purple and bright
+    // yellow alike -- one thin stroke vanishes on a viridis map.
+    shape({pane: "draw-pane", color: "#ffffff", weight: 6, opacity: .95,
+           fill: false, interactive: false}),
+    shape({pane: "draw-pane", color: "#1B5E4B", weight: 3, opacity: 1,
+           dashArray: closed ? null : "8 5",
+           fillColor: "#1B5E4B", fillOpacity: closed ? .18 : 0, interactive: false}),
+    ...points.map(p => L.circleMarker(p, {
+      pane: "draw-pane", radius: 5.5, color: "#ffffff", weight: 2.5, opacity: 1,
+      fillColor: "#1B5E4B", fillOpacity: 1, interactive: false,
+    })),
+  ]).addTo(map);
 }
 
 /* ---- reading the answer ---------------------------------------------- */
@@ -289,8 +317,12 @@ function failed(error) {
 async function askPoint(lat, lon, name) {
   busy("Working…");
   clearOverlays();
-  marker = L.circleMarker([lat, lon], {radius: 7, color: "#34675C", weight: 2,
-                                       fillColor: "#34675C", fillOpacity: .5}).addTo(map);
+  marker = L.layerGroup([
+    L.circleMarker([lat, lon], {pane: "draw-pane", radius: 8, color: "#ffffff",
+                                weight: 5, fill: false}),
+    L.circleMarker([lat, lon], {pane: "draw-pane", radius: 8, color: "#1B5E4B",
+                                weight: 3, fillColor: "#1B5E4B", fillOpacity: .6}),
+  ]).addTo(map);
   try {
     const answer = await api(`/api/point?lat=${lat}&lon=${lon}`);
     show(answer, name || `${lat.toFixed(2)}°N, ${Math.abs(lon).toFixed(2)}°W`);
@@ -300,8 +332,13 @@ async function askPoint(lat, lon, name) {
 async function askRadius(lat, lon, name) {
   busy("Averaging the area…");
   clearOverlays();
-  ring = L.circle([lat, lon], {radius: state.radiusKm * 1000, color: "#34675C",
-                               weight: 2, fillOpacity: .12}).addTo(map);
+  ring = L.layerGroup([
+    L.circle([lat, lon], {pane: "draw-pane", radius: state.radiusKm * 1000,
+                          color: "#ffffff", weight: 6, opacity: .95, fill: false}),
+    L.circle([lat, lon], {pane: "draw-pane", radius: state.radiusKm * 1000,
+                          color: "#1B5E4B", weight: 3, fillColor: "#1B5E4B",
+                          fillOpacity: .16}),
+  ]).addTo(map);
   try {
     const answer = await api("/api/area", {lat, lon, radius_km: state.radiusKm,
                                            parameters: state.params});
