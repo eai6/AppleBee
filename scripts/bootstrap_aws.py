@@ -49,6 +49,8 @@ def main() -> None:
     parser.add_argument("--profile", default="ecomorph")
     parser.add_argument("--repo", default="eai6/AppleBee")
     parser.add_argument("--branch", default="main")
+    parser.add_argument("--environment", default="production",
+                        help="GitHub environment the deploy job declares")
     parser.add_argument("--name", default="applebee")
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--dry-run", action="store_true")
@@ -64,11 +66,17 @@ def main() -> None:
     provider_arn = f"arn:aws:iam::{account}:oidc-provider/{GITHUB_ISSUER}"
     role_name = f"{args.name}-github-deploy"
     state_bucket = f"{args.name}-pulumi-state-{account[-6:]}"
-    subject = f"repo:{args.repo}:ref:refs/heads/{args.branch}"
+    # A workflow job that declares `environment:` gets an *environment* subject
+    # rather than a branch one, so both are trusted. Getting this wrong fails
+    # with "Not authorized to perform sts:AssumeRoleWithWebIdentity" and no
+    # indication of which claim did not match.
+    subjects = [f"repo:{args.repo}:ref:refs/heads/{args.branch}",
+                f"repo:{args.repo}:environment:{args.environment}"]
 
     print(f"account      : {account}")
     print(f"region       : {args.region}")
-    print(f"trusts       : {subject}")
+    for subject in subjects:
+        print(f"trusts       : {subject}")
     print(f"role         : {role_name}")
     print(f"state bucket : {state_bucket}\n")
     if args.dry_run:
@@ -76,9 +84,17 @@ def main() -> None:
         return
 
     # 1. The OIDC provider.
-    if exists(args.profile, "iam", "get-open-id-connect-provider",
-              "--open-id-connect-provider-arn", provider_arn):
-        print("  OIDC provider already present")
+    code, existing = aws(args.profile, "iam", "get-open-id-connect-provider",
+                         "--open-id-connect-provider-arn", provider_arn, check=False)
+    if code == 0:
+        audiences = json.loads(existing)["ClientIDList"]
+        if "sts.amazonaws.com" not in audiences:
+            aws(args.profile, "iam", "add-client-id-to-open-id-connect-provider",
+                "--open-id-connect-provider-arn", provider_arn,
+                "--client-id", "sts.amazonaws.com")
+            print("  OIDC provider present; added the sts.amazonaws.com audience")
+        else:
+            print("  OIDC provider already present, with the right audience")
     else:
         aws(args.profile, "iam", "create-open-id-connect-provider",
             "--url", f"https://{GITHUB_ISSUER}",
@@ -94,8 +110,8 @@ def main() -> None:
             "Principal": {"Federated": provider_arn},
             "Action": "sts:AssumeRoleWithWebIdentity",
             "Condition": {
-                "StringEquals": {f"{GITHUB_ISSUER}:aud": "sts.amazonaws.com",
-                                 f"{GITHUB_ISSUER}:sub": subject},
+                "StringEquals": {f"{GITHUB_ISSUER}:aud": "sts.amazonaws.com"},
+                "StringLike": {f"{GITHUB_ISSUER}:sub": subjects},
             },
         }],
     }
