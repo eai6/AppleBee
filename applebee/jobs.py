@@ -37,7 +37,13 @@ from pathlib import Path
 from .config import DATA
 
 JOBS_DIR = DATA / "jobs"
-LOCK_FILE = JOBS_DIR / "worker.lock"
+
+# Set by the deployment. The queue is read by the API and written by the worker,
+# which are different containers, so on AWS it lives in S3 rather than on either
+# one's disk.
+JOBS_BUCKET_ENV = "APPLEBEE_JOBS_BUCKET"
+JOBS_PREFIX = "jobs"
+LOCK_NAME = "worker.lock.json"
 
 # A worker refreshes the lock as it goes; a lock older than this is treated as
 # abandoned. Generous, because a legitimate weather fetch runs for hours.
@@ -55,6 +61,108 @@ KINDS = {
 
 class Locked(RuntimeError):
     """Another worker holds the lock. There is only ever meant to be one."""
+
+
+class Storage:
+    """Where job records live. A directory locally, a bucket in the deployment.
+
+    The only operation that has to be more than a read or a write is
+    :meth:`write_if_absent`, which is the lock: it must fail rather than
+    overwrite, atomically, or two workers can both believe they hold it.
+    """
+
+    def read(self, name: str) -> bytes | None: ...
+    def write(self, name: str, data: bytes) -> None: ...
+    def write_if_absent(self, name: str, data: bytes) -> bool: ...
+    def delete(self, name: str) -> None: ...
+    def names(self) -> list[str]: ...
+
+
+class LocalStorage(Storage):
+    def __init__(self, root: Path):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def read(self, name):
+        path = self.root / name
+        return path.read_bytes() if path.exists() else None
+
+    def write(self, name, data):
+        (self.root / name).write_bytes(data)
+
+    def write_if_absent(self, name, data):
+        try:
+            handle = os.open(self.root / name, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            return False
+        with os.fdopen(handle, "wb") as out:
+            out.write(data)
+        return True
+
+    def delete(self, name):
+        (self.root / name).unlink(missing_ok=True)
+
+    def names(self):
+        return sorted(p.name for p in self.root.glob("*.json"))
+
+
+class S3Storage(Storage):
+    """The same, in a bucket.
+
+    ``write_if_absent`` uses a conditional put, so the lock is as atomic in S3
+    as an exclusive create is on a filesystem.
+    """
+
+    def __init__(self, bucket: str, prefix: str = JOBS_PREFIX):
+        import boto3
+
+        self.bucket, self.prefix, self.s3 = bucket, prefix, boto3.client("s3")
+
+    def _key(self, name: str) -> str:
+        return f"{self.prefix}/{name}"
+
+    def read(self, name):
+        import botocore
+
+        try:
+            return self.s3.get_object(Bucket=self.bucket, Key=self._key(name))["Body"].read()
+        except botocore.exceptions.ClientError:
+            return None
+
+    def write(self, name, data):
+        self.s3.put_object(Bucket=self.bucket, Key=self._key(name), Body=data)
+
+    def write_if_absent(self, name, data):
+        import botocore
+
+        try:
+            self.s3.put_object(Bucket=self.bucket, Key=self._key(name), Body=data,
+                               IfNoneMatch="*")
+            return True
+        except botocore.exceptions.ClientError as exc:
+            if exc.response["Error"]["Code"] in ("PreconditionFailed", "ConditionalRequestConflict"):
+                return False
+            raise
+
+    def delete(self, name):
+        self.s3.delete_object(Bucket=self.bucket, Key=self._key(name))
+
+    def names(self):
+        pages = self.s3.get_paginator("list_objects_v2")
+        return sorted(
+            obj["Key"].rsplit("/", 1)[-1]
+            for page in pages.paginate(Bucket=self.bucket, Prefix=f"{self.prefix}/")
+            for obj in page.get("Contents", [])
+            if obj["Key"].endswith(".json")
+        )
+
+
+def storage_for(root: Path | None = None) -> Storage:
+    """S3 when the deployment names a bucket, a directory otherwise."""
+    bucket = os.environ.get(JOBS_BUCKET_ENV)
+    if bucket and root is None:
+        return S3Storage(bucket)
+    return LocalStorage(root or JOBS_DIR)
 
 
 @dataclass
@@ -76,11 +184,10 @@ class Job:
 class JobStore:
     """Durable job state. One JSON file per job, one lock for the worker."""
 
-    def __init__(self, root: Path | None = None):
+    def __init__(self, root: Path | None = None, storage: Storage | None = None):
         # Resolved at call time, not at import, so a deployment (or a test) can
         # point the queue somewhere else without reaching inside the class.
-        self.root = Path(root or JOBS_DIR)
-        self.root.mkdir(parents=True, exist_ok=True)
+        self.store = storage or storage_for(root)
 
     # -- requesting ---------------------------------------------------------
 
@@ -151,41 +258,38 @@ class JobStore:
     # -- the lock -----------------------------------------------------------
 
     def acquire_lock(self, holder: str) -> None:
-        lock = self.root / LOCK_FILE.name
-        if lock.exists():
-            age = time.time() - json.loads(lock.read_text()).get("at", 0)
+        held = self.store.read(LOCK_NAME)
+        if held is not None:
+            age = time.time() - json.loads(held).get("at", 0)
             if age < LOCK_STALE_SECONDS:
                 raise Locked(f"another worker holds the lock ({age:.0f}s old)")
-            lock.unlink()          # abandoned: a worker died mid-job
-        try:
-            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            raise Locked("another worker took the lock first") from None
-        with os.fdopen(handle, "w") as out:
-            json.dump({"holder": holder, "at": time.time()}, out)
+            self.store.delete(LOCK_NAME)    # abandoned: a worker died mid-job
+        record = json.dumps({"holder": holder, "at": time.time()}).encode()
+        if not self.store.write_if_absent(LOCK_NAME, record):
+            raise Locked("another worker took the lock first")
 
     def heartbeat(self) -> None:
         """Say the worker is still alive, so a long fetch is not called dead."""
-        lock = self.root / LOCK_FILE.name
-        if lock.exists():
-            record = json.loads(lock.read_text())
+        held = self.store.read(LOCK_NAME)
+        if held is not None:
+            record = json.loads(held)
             record["at"] = time.time()
-            lock.write_text(json.dumps(record))
+            self.store.write(LOCK_NAME, json.dumps(record).encode())
 
     def release_lock(self) -> None:
-        (self.root / LOCK_FILE.name).unlink(missing_ok=True)
+        self.store.delete(LOCK_NAME)
 
     # -- reading ------------------------------------------------------------
 
     def get(self, job_id: str) -> Job:
-        path = self.root / f"{job_id}.json"
-        if not path.exists():
+        raw = self.store.read(f"{job_id}.json")
+        if raw is None:
             raise KeyError(f"no job {job_id!r}")
-        return Job(**json.loads(path.read_text()))
+        return Job(**json.loads(raw))
 
     def list(self, state: str | None = None) -> list[Job]:
-        jobs = [Job(**json.loads(p.read_text()))
-                for p in sorted(self.root.glob("*.json")) if p.name != LOCK_FILE.name]
+        jobs = [Job(**json.loads(self.store.read(name)))
+                for name in self.store.names() if name != LOCK_NAME]
         return [j for j in jobs if state is None or j.state == state]
 
     # -- internals ----------------------------------------------------------
@@ -205,7 +309,7 @@ class JobStore:
 
     def _write(self, job: Job, event: str, by: str = "") -> None:
         job.history.append({"state": event, "at": time.time(), "by": by})
-        (self.root / f"{job.id}.json").write_text(json.dumps(asdict(job), indent=1))
+        self.store.write(f"{job.id}.json", json.dumps(asdict(job), indent=1).encode())
 
 
 def command(job: Job) -> list[str]:

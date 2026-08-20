@@ -402,7 +402,7 @@ def request_job(kind: str, requested_by: str = "", **parameters) -> dict:
 
 
 def approve_job(job_id: str, token: str | None = None, by: str = "") -> dict:
-    """Approve a queued job. Administrators only."""
+    """Approve a queued job, and start the worker that will carry it out."""
     import os
 
     from .jobs import JobStore
@@ -414,7 +414,46 @@ def approve_job(job_id: str, token: str | None = None, by: str = "") -> dict:
         )
     if not token or token != expected:
         raise PermissionError("not authorised to approve jobs")
-    return {"job": _job_summary(JobStore().approve(job_id, by=by))}
+    job = JobStore().approve(job_id, by=by)
+    return {"job": _job_summary(job), "worker": start_worker()}
+
+
+def start_worker() -> dict:
+    """Run one worker task, if this deployment has one to run.
+
+    Approval and starting are separate steps on purpose: a job that is approved
+    but whose worker failed to start is still approved, and the next worker to
+    run will pick it up. Nothing is lost by the start failing.
+    """
+    import os
+
+    cluster = os.environ.get("APPLEBEE_WORKER_CLUSTER")
+    definition = os.environ.get("APPLEBEE_WORKER_TASK")
+    subnets = [s for s in os.environ.get("APPLEBEE_WORKER_SUBNETS", "").split(",") if s]
+    security = os.environ.get("APPLEBEE_WORKER_SECURITY_GROUP")
+    if not (cluster and definition and subnets and security):
+        return {"started": False,
+                "reason": "no worker is configured on this deployment; run "
+                          "scripts/run_worker.py wherever the inputs live"}
+    try:
+        import boto3
+
+        started = boto3.client("ecs").run_task(
+            cluster=cluster, taskDefinition=definition, launchType="FARGATE", count=1,
+            networkConfiguration={"awsvpcConfiguration": {
+                "subnets": subnets, "securityGroups": [security],
+                # A public address, because the worker calls PRISM and USDA and
+                # the default VPC has no NAT gateway -- which would cost more per
+                # month than everything else here put together.
+                "assignPublicIp": "ENABLED"}},
+        )
+    except Exception as exc:  # noqa: BLE001 -- reported; the job stays approved
+        return {"started": False, "reason": f"{type(exc).__name__}: {exc}"}
+    tasks = started.get("tasks", [])
+    failures = started.get("failures", [])
+    return {"started": bool(tasks),
+            "task": tasks[0]["taskArn"].rsplit("/", 1)[-1] if tasks else None,
+            "failures": [f.get("reason") for f in failures]}
 
 
 def _job_summary(job) -> dict:

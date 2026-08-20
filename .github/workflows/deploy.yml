@@ -60,19 +60,28 @@ jobs:
 
       # --provenance=false --sbom=false keep the push to a single manifest;
       # required when this ran on Lambda, harmless now.
-      - name: Build and push the image
+      # Two images from one repository: the API, and the acquisition worker,
+      # which carries the geospatial stack the API has no use for.
+      - name: Build and push the images
         id: image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPO: ${{ steps.ecr.outputs.registry }}/${{ env.PROJECT }}-api
         run: |
-          uri="$REGISTRY/${{ env.PROJECT }}-api:${{ github.sha }}"
-          docker buildx build \
-            --platform linux/amd64 \
-            --provenance=false --sbom=false \
-            --cache-from "type=registry,ref=$REGISTRY/${{ env.PROJECT }}-api:cache" \
-            --cache-to "type=registry,ref=$REGISTRY/${{ env.PROJECT }}-api:cache,mode=max,image-manifest=true,oci-mediatypes=true" \
-            -f deploy/Dockerfile.server -t "$uri" --push .
-          echo "uri=$uri" >> "$GITHUB_OUTPUT"
+          build () {          # $1 dockerfile, $2 tag, $3 cache suffix
+            docker buildx build \
+              --platform linux/amd64 \
+              --provenance=false --sbom=false \
+              --cache-from "type=registry,ref=$REPO:cache-$3" \
+              --cache-to "type=registry,ref=$REPO:cache-$3,mode=max,image-manifest=true,oci-mediatypes=true" \
+              -f "$1" -t "$2" --push .
+          }
+          api="$REPO:${{ github.sha }}"
+          worker="$REPO:worker-${{ github.sha }}"
+          build deploy/Dockerfile.server "$api" api
+          build deploy/Dockerfile.worker "$worker" worker
+          echo "uri=$api" >> "$GITHUB_OUTPUT"
+          echo "worker=$worker" >> "$GITHUB_OUTPUT"
 
       - name: Install Pulumi's dependencies
         working-directory: infra
@@ -93,6 +102,7 @@ jobs:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
           APPLEBEE_ADMIN_TOKEN: ${{ secrets.APPLEBEE_ADMIN_TOKEN }}
           APPLEBEE_IMAGE_URI: ${{ steps.image.outputs.uri }}
+          APPLEBEE_WORKER_IMAGE_URI: ${{ steps.image.outputs.worker }}
 
       - name: Where it is
         run: |

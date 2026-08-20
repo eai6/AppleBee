@@ -94,6 +94,121 @@ if not image_uri:
     )
 
 # ---------------------------------------------------------------------------
+# The acquisition worker
+# ---------------------------------------------------------------------------
+#
+# A task per job rather than a daemon: extending the inputs takes hours and
+# happens a few times a year, so nothing should be running in between. Fargate
+# because the job needs disk and a network for eight uninterrupted hours, and
+# because PRISM's pacing means one worker, ever -- which the lock in
+# applebee/jobs.py enforces and this only has to not undermine.
+
+worker_image = config.get("workerImageUri") or os.environ.get("APPLEBEE_WORKER_IMAGE_URI")
+
+cluster = aws.ecs.Cluster("worker", name=f"{name}-worker", tags={"Project": name})
+
+worker_logs = aws.cloudwatch.LogGroup(
+    "worker-logs", name=f"/aws/ecs/{name}-worker", retention_in_days=30)
+
+execution = aws.iam.Role(
+    "worker-execution",
+    name=f"{name}-worker-execution",
+    assume_role_policy=json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole",
+                       "Principal": {"Service": "ecs-tasks.amazonaws.com"}}],
+    }),
+)
+
+aws.iam.RolePolicyAttachment(
+    "worker-execution-policy", role=execution.name,
+    policy_arn=("arn:aws:iam::aws:policy/service-role/"
+                "AmazonECSTaskExecutionRolePolicy"))
+
+worker_role = aws.iam.Role(
+    "worker-task",
+    name=f"{name}-worker-task",
+    assume_role_policy=json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole",
+                       "Principal": {"Service": "ecs-tasks.amazonaws.com"}}],
+    }),
+)
+
+aws.iam.RolePolicy(
+    "worker-data",
+    role=worker_role.id,
+    policy=pulumi.Output.all(data.arn, cache.arn).apply(lambda arns: json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            # The worker is the only thing that may write the inputs. Everything
+            # else in this stack reads them.
+            {"Effect": "Allow",
+             "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                        "s3:ListBucket"],
+             "Resource": [arns[0], f"{arns[0]}/*"]},
+            {"Effect": "Allow",
+             "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                        "s3:ListBucket"],
+             "Resource": [arns[1], f"{arns[1]}/*"]},
+        ],
+    })),
+)
+
+vpc = aws.ec2.get_vpc(default=True)
+worker_subnets = aws.ec2.get_subnets(filters=[aws.ec2.GetSubnetsFilterArgs(
+    name="vpc-id", values=[vpc.id])]).ids
+
+# Outbound only: the worker calls PRISM, USDA and S3, and nothing calls it.
+worker_sg = aws.ec2.SecurityGroup(
+    "worker-sg",
+    description="AppleBee acquisition worker: outbound only",
+    vpc_id=vpc.id,
+    egress=[aws.ec2.SecurityGroupEgressArgs(
+        from_port=0, to_port=0, protocol="-1", cidr_blocks=["0.0.0.0/0"])],
+    tags={"Project": name},
+)
+
+if worker_image:
+    task = aws.ecs.TaskDefinition(
+        "worker-task-definition",
+        family=f"{name}-worker",
+        cpu="1024", memory="4096",
+        network_mode="awsvpc",
+        requires_compatibilities=["FARGATE"],
+        execution_role_arn=execution.arn,
+        task_role_arn=worker_role.arn,
+        # The matrices are gigabytes, and the run holds the old and the grown
+        # copy at once while it extends them. 20 GB is Fargate's default and is
+        # not enough.
+        ephemeral_storage=aws.ecs.TaskDefinitionEphemeralStorageArgs(size_in_gib=60),
+        container_definitions=pulumi.Output.all(
+            worker_image, data.bucket, cache.bucket, worker_logs.name, region
+        ).apply(lambda v: json.dumps([{
+            "name": "worker",
+            "image": v[0],
+            "essential": True,
+            "environment": [
+                {"name": "APPLEBEE_DATA_BUCKET", "value": v[1]},
+                {"name": "APPLEBEE_CACHE_BUCKET", "value": v[2]},
+                {"name": "APPLEBEE_JOBS_BUCKET", "value": v[2]},
+                {"name": "AWS_DEFAULT_REGION", "value": v[4]},
+            ],
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {"awslogs-group": v[3], "awslogs-region": v[4],
+                            "awslogs-stream-prefix": "job"},
+            },
+        }])),
+    )
+
+    pulumi.export("worker_task", task.arn)
+
+pulumi.export("worker_cluster", cluster.name)
+pulumi.export("worker_subnets", worker_subnets)
+
+
+# ---------------------------------------------------------------------------
 # The service
 # ---------------------------------------------------------------------------
 #
@@ -129,7 +244,7 @@ aws.iam.RolePolicyAttachment(
     policy_arn=("arn:aws:iam::aws:policy/service-role/"
                 "AWSAppRunnerServicePolicyForECRAccess"))
 
-task = aws.iam.Role(
+app_role = aws.iam.Role(
     "apprunner-task",
     name=f"{name}-apprunner-task",
     description="What the running container may reach",
@@ -142,7 +257,7 @@ task = aws.iam.Role(
 
 aws.iam.RolePolicy(
     "apprunner-data",
-    role=task.id,
+    role=app_role.id,
     policy=pulumi.Output.all(data.arn, cache.arn).apply(lambda arns: json.dumps({
         "Version": "2012-10-17",
         "Statement": [
@@ -152,6 +267,32 @@ aws.iam.RolePolicy(
              "Resource": [arns[0], f"{arns[0]}/*"]},
             {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"],
              "Resource": f"{arns[1]}/runs/*"},
+            # The job queue, which the API writes and the worker reads.
+            {"Effect": "Allow",
+             "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                        "s3:ListBucket"],
+             "Resource": [arns[1], f"{arns[1]}/jobs/*"]},
+        ],
+    })),
+)
+
+# Approving a job starts the worker, so the API may run that one task family and
+# pass those two roles, and nothing else.
+aws.iam.RolePolicy(
+    "apprunner-worker",
+    role=app_role.id,
+    policy=pulumi.Output.all(cluster.arn, execution.arn, worker_role.arn,
+                             account.account_id, region).apply(lambda v: json.dumps({
+        "Version": "2012-10-17",
+        "Statement": [
+            {"Effect": "Allow", "Action": "ecs:RunTask",
+             "Resource": f"arn:aws:ecs:{v[4]}:{v[3]}:task-definition/{name}-worker:*",
+             "Condition": {"ArnEquals": {"ecs:cluster": v[0]}}},
+            {"Effect": "Allow", "Action": "ecs:DescribeTasks",
+             "Resource": f"arn:aws:ecs:{v[4]}:{v[3]}:task/*"},
+            {"Effect": "Allow", "Action": "iam:PassRole",
+             "Resource": [v[1], v[2]],
+             "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}},
         ],
     })),
 )
@@ -159,6 +300,9 @@ aws.iam.RolePolicy(
 environment = {
     "APPLEBEE_DATA_BUCKET": data.bucket,
     "APPLEBEE_CACHE_BUCKET": cache.bucket,
+    # The queue is shared: the API writes requests to it and the worker reads
+    # them, and they are different containers.
+    "APPLEBEE_JOBS_BUCKET": cache.bucket,
     # From the provider, so the stack follows wherever it is deployed rather
     # than carrying a second opinion about where that is.
     "AWS_DEFAULT_REGION": region,
@@ -191,7 +335,7 @@ service = aws.apprunner.Service(
     instance_configuration=aws.apprunner.ServiceInstanceConfigurationArgs(
         cpu=config.get("cpu") or "0.5 vCPU",
         memory=config.get("memory") or "1 GB",
-        instance_role_arn=task.arn,
+        instance_role_arn=app_role.arn,
     ),
     # TCP rather than HTTP: the page is served from the same port and a health
     # check that fetched it would run the whole application every ten seconds.

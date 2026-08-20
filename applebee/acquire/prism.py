@@ -372,6 +372,53 @@ def _flush(values, buffer_cols, buffer_index) -> None:
     buffer_index.clear()
 
 
+def extend_matrix(cache_dir: Path, cache_key: str, start: str, end: str) -> dict:
+    """Grow a cached matrix's day axis, keeping the days already in it.
+
+    :func:`fetch_and_sample` sizes its array to the range it is asked for and
+    throws away a cache of a different shape, so asking for 2013-2025 on top of
+    a 2013-2018 cache would re-fetch six years that are already held -- about
+    twelve hours of PRISM's pacing, for nothing. This copies the existing days
+    into a matrix of the new shape first; the resume scan then skips them.
+
+    The new range must start no later than the old one and end no earlier, so
+    that every day already held still has a home.
+    """
+    cache_dir = Path(cache_dir)
+    values_path = cache_dir / f"{cache_key}.values.npy"
+    dates_path = cache_dir / f"{cache_key}.dates.npy"
+    if not values_path.exists():
+        return {"extended": False, "reason": "nothing cached yet"}
+
+    old_days = pd.DatetimeIndex(np.load(dates_path))
+    new_days = pd.date_range(start, end, freq="D")
+    if old_days[0] < new_days[0] or old_days[-1] > new_days[-1]:
+        raise ValueError(
+            f"{cache_key}: {start}..{end} does not contain the cached "
+            f"{old_days[0]:%Y-%m-%d}..{old_days[-1]:%Y-%m-%d}"
+        )
+    if len(old_days) == len(new_days):
+        return {"extended": False, "reason": "already the requested range"}
+
+    offset = int(new_days.get_loc(old_days[0]))
+    existing = np.lib.format.open_memmap(values_path, mode="r")
+    grown_path = values_path.with_suffix(".growing.npy")
+    grown = np.lib.format.open_memmap(
+        grown_path, mode="w+", dtype=existing.dtype,
+        shape=(existing.shape[0], len(new_days)))
+    grown[:] = np.nan
+    # Copied in blocks: the whole array is gigabytes and does not want to be
+    # resident all at once.
+    for first in range(0, existing.shape[0], 8192):
+        last = min(first + 8192, existing.shape[0])
+        grown[first:last, offset:offset + existing.shape[1]] = existing[first:last]
+    del existing, grown
+    grown_path.replace(values_path)
+    np.save(dates_path, new_days.to_numpy())
+    return {"extended": True, "days_before": len(old_days), "days_after": len(new_days),
+            "offset": offset}
+
+
 def fetch_and_sample(
     root: Path,
     cache_key: str,

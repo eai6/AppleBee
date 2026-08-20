@@ -115,10 +115,10 @@ def test_a_heartbeat_keeps_a_long_fetch_from_looking_dead(store):
     import json
 
     store.acquire_lock("worker-1")
-    lock = store.root / jobs.LOCK_FILE.name
-    lock.write_text(json.dumps({"holder": "worker-1", "at": 0}))
+    store.store.write(jobs.LOCK_NAME,
+                      json.dumps({"holder": "worker-1", "at": 0}).encode())
     store.heartbeat()
-    assert json.loads(lock.read_text())["at"] > 0
+    assert json.loads(store.store.read(jobs.LOCK_NAME))["at"] > 0
 
 
 # ---------------------------------------------------------------------------
@@ -164,3 +164,22 @@ def test_the_queue_can_be_read_without_a_token(store):
     a_weather_job(store)
     status, payload = answer("GET", "/api/jobs", {}, None)
     assert status == 200 and len(payload["jobs"]) == 1
+
+
+def test_a_deployment_without_a_worker_says_so_rather_than_failing(monkeypatch):
+    # Approval and starting are separate: an approved job whose worker did not
+    # start is still approved, and the next worker to run picks it up.
+    for variable in ("APPLEBEE_WORKER_CLUSTER", "APPLEBEE_WORKER_TASK",
+                     "APPLEBEE_WORKER_SUBNETS", "APPLEBEE_WORKER_SECURITY_GROUP"):
+        monkeypatch.delenv(variable, raising=False)
+    answer = api.start_worker()
+    assert answer["started"] is False and "no worker is configured" in answer["reason"]
+
+
+def test_the_lock_is_taken_through_storage_so_s3_can_hold_it(store):
+    # The API and the worker are different containers, so the lock cannot be a
+    # file on either one's disk. Everything goes through the storage layer.
+    store.acquire_lock("worker-1")
+    assert store.store.read(jobs.LOCK_NAME) is not None
+    store.release_lock()
+    assert store.store.read(jobs.LOCK_NAME) is None

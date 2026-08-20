@@ -1,0 +1,13 @@
+# The acquisition pipeline, which needs the geospatial stack the API does not:
+# rasterio to read the Cropland Data Layer, exactextract to take area-weighted
+# means within each cell's buffer, geopandas and shapely to clip to state
+# boundaries, requests to talk to PRISM.
+numpy==2.5.1
+pandas==3.0.3
+pyarrow==25.0.0
+requests==2.34.2
+rasterio==1.5.0
+geopandas==1.1.4
+shapely==2.1.2
+pyproj==3.7.2
+exactextract==0.3.0

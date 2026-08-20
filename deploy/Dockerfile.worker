@@ -1,0 +1,29 @@
+# The acquisition worker: the only thing that ever changes the input data.
+#
+# It runs the same scripts a person would run from a clone —
+# scripts/fetch_prism.py and scripts/build_forage.py — because those are paced,
+# resumable and already proven. What this image adds is somewhere to run them
+# that has disk, a network, and eight uninterrupted hours.
+#
+# PRISM allows two fetches of a file per 24 hours and blocks IPs that crowd it,
+# so exactly one of these runs at a time, held by the lock in applebee/jobs.py.
+FROM python:3.12-slim
+
+WORKDIR /srv
+
+# unzip for the PRISM archives; the rest comes from wheels.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        unzip curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY deploy/requirements-worker.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && pip install --no-cache-dir boto3
+
+COPY applebee/ ./applebee/
+COPY scripts/ ./scripts/
+COPY deploy/regions.aws.json ./regions.aws.json
+COPY data/inputs/forage/koh_2016_cdl_floral_index.csv ./data/inputs/forage/
+
+ENV PYTHONUNBUFFERED=1 APPLEBEE_REGIONS=/srv/regions.aws.json
+
+CMD ["python", "scripts/run_worker.py"]
