@@ -24,6 +24,9 @@ returned a number without saying so would overstate what the model earned.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
 import math
 import warnings
 from functools import lru_cache
@@ -32,7 +35,7 @@ import numpy as np
 import pandas as pd
 
 from . import datasets
-from .config import OUTPUTS, ModelParams
+from .config import CACHE, OUTPUTS, ModelParams
 from .model import AppleBee
 
 # Presentation metadata for the parameter form: what a field means, its unit,
@@ -110,6 +113,18 @@ DEFAULT_REGION = "northeast"
 # nearest cell to a point in another country is not a prediction.
 FAR_KM = 25.0
 TOO_FAR_KM = 500.0
+
+# Offspring per female packs into a uint16 at two decimal places: the regional
+# maximum is under 35, and the format's ceiling is 655. Sending float64 instead
+# would quadruple a payload whose whole point is that it is small.
+PACK_SCALE = 100
+PACK_CEILING = 65535
+
+# Region runs are deterministic in (region, years, parameters), so an identical
+# request is answered from here rather than recomputed. Most visitors run the
+# defaults, which makes this the difference between a platform that costs
+# nothing to serve and one that pays for the same 268,536 cell-years repeatedly.
+REGION_CACHE = CACHE / "web"
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +283,68 @@ def point(lat: float, lon: float, params: ModelParams | dict | None = None, *,
     }
 
 
+def region(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
+           years: list[int] | None = None, block: tuple[int, int] | None = None,
+           use_cache: bool = True) -> dict:
+    """Every cell in a region, packed small enough to send to a browser.
+
+    ``block`` runs only cells ``start:stop``, which is how the work fans out:
+    each worker reads one contiguous run of rows in a single ranged request and
+    answers for its own slice. Without it, one process runs the lot — 268,536
+    cell-years in about 35 seconds.
+    """
+    params = _as_params(params)
+    weather_years = list(years) if years else _weather_years(region)
+    key = _region_key(region, weather_years, params, block)
+    if use_cache and block is None:
+        cached = _cache_read(key)
+        if cached is not None:
+            return cached
+
+    _, tmean, ppt, forage = _region(region)
+    cells = _runnable_cells(region)
+    if block is not None:
+        cells = cells.iloc[block[0]:block[1]].reset_index(drop=True)
+
+    model = AppleBee(tmean, ppt, forage, params)
+    pairs = list(zip(cells["col"].astype(int), cells["row"].astype(int)))
+    results, failures = model.run(pairs, weather_years)
+
+    springs = sorted(results.offspring_year.unique().tolist())
+    by_cell = results.pivot_table(index=["col", "row"], columns="offspring_year",
+                                  values="offspring")
+    order = cells.set_index(["col", "row"]).index
+    by_cell = by_cell.reindex(order)
+
+    payload = {
+        "region": region, "cells": int(len(cells)), "springs": springs,
+        "parameters": params.to_dict(),
+        "differences": {k: {"default": was, "used": now}
+                        for k, (was, now) in params.differences().items()},
+        "encoding": {"lon": "float32", "lat": "float32",
+                     "values": "uint16", "scale": PACK_SCALE},
+        # The grid step, so a client can draw a cell as a cell rather than
+        # guessing a dot size and leaving gaps between the rows.
+        "cell_degrees": _grid_step(cells["lat"].to_numpy()),
+        "lon": _pack(cells["lon"].to_numpy(), "float32"),
+        "lat": _pack(cells["lat"].to_numpy(), "float32"),
+        "mean": _pack(by_cell.mean(axis=1).to_numpy()),
+        "by_spring": {str(s): _pack(by_cell[s].to_numpy()) for s in springs},
+        "summary": {
+            "mean": round(float(np.nanmean(by_cell.to_numpy())), 2),
+            "max": round(float(np.nanmax(by_cell.to_numpy())), 2),
+            "min": round(float(np.nanmin(by_cell.to_numpy())), 2),
+            "cell_years": int(len(results)),
+            "failures": int(len(failures)),
+        },
+        "caveats": [CAVEATS["objective_3"], CAVEATS["daily_mean_temperature"],
+                    CAVEATS["extent"]],
+    }
+    if block is None:
+        _cache_write(key, payload)
+    return payload
+
+
 def provenance() -> dict:
     """Where the inputs came from and whether they are still what they were."""
     from . import provenance as prov
@@ -279,6 +356,52 @@ def provenance() -> dict:
 # ---------------------------------------------------------------------------
 # Internals
 # ---------------------------------------------------------------------------
+
+
+def _pack(values: np.ndarray, dtype: str = "uint16") -> str:
+    """Base64 of a compact binary array -- JSON, but not JSON numbers.
+
+    268,536 offspring values are 537 KB packed and several megabytes as text.
+    """
+    array = np.asarray(values, dtype="float64")
+    if dtype == "uint16":
+        # A cell that failed to run has no value; 0 is the honest stand-in and
+        # the failure count travels in the summary rather than being implied.
+        scaled = np.nan_to_num(array, nan=0.0) * PACK_SCALE
+        array = np.clip(np.rint(scaled), 0, PACK_CEILING).astype("uint16")
+    else:
+        array = array.astype(dtype)
+    return base64.b64encode(array.tobytes()).decode()
+
+
+def _grid_step(lats: np.ndarray) -> float:
+    """Spacing of the grid in degrees, read off the cells themselves."""
+    unique = np.unique(np.round(lats, 6))
+    if unique.size < 2:
+        return 0.0
+    return float(np.median(np.diff(unique)))
+
+
+def _region_key(region: str, years: list[int], params: ModelParams,
+                block: tuple[int, int] | None) -> str:
+    digest = hashlib.sha256(json.dumps(
+        {"region": region, "years": years, "parameters": params.to_dict(),
+         "block": block}, sort_keys=True).encode()).hexdigest()
+    return f"{region}-{digest[:16]}"
+
+
+def _cache_read(key: str) -> dict | None:
+    path = REGION_CACHE / f"{key}.json"
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text())
+    payload["cached"] = True
+    return payload
+
+
+def _cache_write(key: str, payload: dict) -> None:
+    REGION_CACHE.mkdir(parents=True, exist_ok=True)
+    (REGION_CACHE / f"{key}.json").write_text(json.dumps(payload))
 
 
 def _as_params(params) -> ModelParams:

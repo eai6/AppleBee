@@ -205,7 +205,7 @@ data — so they ship together rather than in sequence.
       2 and 3 re-fitted under the visitor's parameters). One page, two audiences:
       a grower enters an address, a reviewer opens the parameter form. Both are
       sub-second Lambdas over kilobytes of data.
-- [ ] **Phase 3 - the map.** `/region` fan-out, packed payload, canvas map reusing
+- [x] **Phase 3 - the map.** Done 2026-08-19. `/region` fan-out, packed payload, canvas map reusing
       plan 5's encoding, results cache keyed by parameter hash.
 - [ ] **Phase 4 - extension on request.** Queued admin-approved jobs for new years
       or a new extent, provenance and SHA-256 written on every S3 object so the
@@ -322,6 +322,38 @@ foraging threshold does *not* zero out reproduction in upstate New York, because
 spring there does reach a 25 °C daily mean. The test now asserts what is true —
 a stricter threshold can only remove foraging days — and uses 35 °C for the
 unreachable case.
+
+### Phase 3 — done 2026-08-19
+
+`api.region()` runs every cell in a region and packs the answer small enough to
+send to a browser: coordinates as float32, offspring as uint16 at two decimal
+places, base64 in JSON. **1.31 MB for 268,536 values.** A full run is 38.9 s and
+reproduces the manuscript exactly — regional mean 14.73, 18 cells that never
+accumulate the degree-days to emerge.
+
+`block=(start, stop)` runs one contiguous slice, which is the fan-out: each
+worker reads its own rows in a single ranged request and answers for its own
+cells. The coordinator merges. Locally, one process runs the lot.
+
+**The cache is the cost model.** Answers are deterministic in (region, years,
+parameters), so an identical request replays in **2 ms** instead of 38.9 s. Most
+visitors run the defaults, which makes this the difference between a platform
+that is free to serve and one that pays for the same 268,536 cell-years over and
+over. A local directory now; the same two functions become S3 on deployment.
+
+The map itself is canvas, drawn from the packed arrays, in viridis to match the
+manuscript's figures so the page and the paper read as one picture. Clicking it
+fills in the coordinates and answers in the location panel rather than growing a
+second readout.
+
+One defect worth recording because it was invisible in the numbers: the first
+map was **striped**. A cell is 4 km on both sides, but a degree of longitude is
+shorter than a degree of latitude at 41°N, so a square dot sized to the
+horizontal spacing leaves gaps between the rows. The payload now carries
+`cell_degrees` — read off the cells themselves, 1/24° — and the client draws a
+cell as a cell. Caught by screenshotting the page, not by a test.
+
+Tests: 6 more in `tests/test_api.py`. Suite 91 → 97.
 
 ## Risks
 

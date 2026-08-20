@@ -15,6 +15,7 @@ Endpoints:
 ``POST /api/evaluate``           the paper's two evaluations under a set
 ``GET  /api/point?lat=&lon=``    one location, year by year
 ``POST /api/point``              the same, with parameters in the body
+``POST /api/region``             every cell in a region, packed
 ``GET  /api/provenance``         where the inputs came from
 ===============================  ==========================================
 
@@ -61,6 +62,13 @@ def route(method: str, path: str, query: dict, body: dict | None) -> tuple[int, 
         return 200, api.provenance()
     if path == "/api/evaluate" and method in ("GET", "POST"):
         return 200, api.evaluate(body.get("parameters"))
+    if path == "/api/region" and method in ("GET", "POST"):
+        block = body.get("block")
+        return 200, api.region(body.get("parameters"),
+                               region=body.get("region", query.get("region",
+                                                                   api.DEFAULT_REGION)),
+                               years=body.get("years"),
+                               block=tuple(block) if block else None)
     if path == "/api/point" and method in ("GET", "POST"):
         lat = _number(body.get("lat", query.get("lat")), "lat")
         lon = _number(body.get("lon", query.get("lon")), "lon")

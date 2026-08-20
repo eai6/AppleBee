@@ -187,3 +187,63 @@ def test_a_malformed_body_is_reported_rather_than_raised():
     response = handler({"rawPath": "/api/evaluate", "body": "{not json",
                         "requestContext": {"http": {"method": "POST"}}})
     assert response["statusCode"] == 400 and "not JSON" in response["body"]
+
+
+# ---------------------------------------------------------------------------
+# region
+# ---------------------------------------------------------------------------
+
+
+@needs_northeast
+def test_a_block_answers_for_its_own_slice_only():
+    payload = api.region(block=(0, 50))
+    assert payload["cells"] == 50
+    assert payload["summary"]["cell_years"] == 50 * len(payload["springs"])
+
+
+@needs_northeast
+def test_the_packed_payload_unpacks_to_what_the_model_produced():
+    import base64
+
+    import numpy as np
+
+    payload = api.region(block=(0, 50))
+    scale = payload["encoding"]["scale"]
+    unpack = lambda blob, kind: np.frombuffer(base64.b64decode(blob), dtype=kind)
+    mean = unpack(payload["mean"], "uint16") / scale
+    springs = np.stack([unpack(payload["by_spring"][str(s)], "uint16") / scale
+                        for s in payload["springs"]])
+    assert mean.size == 50
+    assert unpack(payload["lon"], "float32").size == 50
+    # The mean array must be the mean of the years, not a separately rounded one.
+    assert np.allclose(mean, springs.mean(axis=0), atol=1 / scale)
+
+
+@needs_northeast
+def test_the_payload_carries_the_grid_step_so_a_map_can_draw_cells():
+    # PRISM's 4 km grid is 1/24 of a degree; a client that guessed would stripe.
+    assert api.region(block=(0, 200))["cell_degrees"] == pytest.approx(1 / 24, abs=1e-4)
+
+
+@needs_northeast
+def test_region_parameters_travel_with_the_answer():
+    payload = api.region({"longevity": 30}, block=(0, 20))
+    assert payload["differences"]["longevity"] == {"default": 22, "used": 30}
+    assert payload["parameters"]["longevity"] == 30
+
+
+def test_a_cached_region_says_that_it_was_cached(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "REGION_CACHE", tmp_path)
+    api._cache_write("k", {"region": "northeast", "cells": 3})
+    assert api._cache_read("k")["cached"] is True
+    assert api._cache_read("absent") is None
+
+
+def test_the_cache_key_follows_the_parameters():
+    from applebee.config import ModelParams
+
+    default = api._region_key("northeast", [2013], ModelParams(), None)
+    changed = api._region_key("northeast", [2013],
+                              ModelParams().with_(longevity=30), None)
+    other_years = api._region_key("northeast", [2014], ModelParams(), None)
+    assert len({default, changed, other_years}) == 3

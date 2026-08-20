@@ -69,6 +69,14 @@
   .verdict b { color: var(--ink); }
   .bad { color: var(--warn); }
   .muted { color: var(--ink-3); font-size: .8rem; }
+  .map-controls { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap;
+                  margin-bottom: .8rem; }
+  .map-controls select { width: auto; }
+  #map { width: 100%; height: auto; border-radius: 8px; cursor: crosshair;
+         background: var(--bg); }
+  .ramp { display: flex; align-items: center; gap: .5rem; margin-top: .5rem;
+          font-size: .78rem; color: var(--ink-3); }
+  .ramp .bar { height: 9px; flex: 0 0 220px; border-radius: 5px; }
   svg text { fill: var(--ink-3); font-size: 10px; }
 </style>
 </head>
@@ -97,6 +105,20 @@
     <p class="sub">Both evaluations, re-fitted under whatever parameters you set below.</p>
     <button id="run-eval">Run evaluation</button>
     <div id="eval-out"></div>
+  </section>
+
+  <section id="map-panel" style="grid-column: 1 / -1">
+    <h2>Across the Northeast</h2>
+    <p class="sub">Every cell carrying both weather and a floral index, run under
+       the parameters below. Click the map to predict at that point.</p>
+    <div class="map-controls">
+      <select id="map-year"></select>
+      <button id="run-region">Run the region</button>
+      <span class="muted" id="map-status">44,756 cells &mdash; about 40 s if these
+        parameters have not been run before.</span>
+    </div>
+    <canvas id="map" width="1100" height="620"></canvas>
+    <div id="map-legend"></div>
   </section>
 
   <section id="parameters" style="grid-column: 1 / -1">
@@ -243,12 +265,114 @@ function renderEvaluation(data) {
     <div class="note">${data.caveats.map((c) => `<p>${c}</p>`).join("")}</div>`;
 }
 
+/* Viridis, matching the manuscript's figures so the page and the paper are read
+   as the same picture. Perceptually uniform and colourblind-safe. */
+const VIRIDIS = [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],
+                 [31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]];
+function viridis(t) {
+  const x = Math.max(0, Math.min(1, t)) * (VIRIDIS.length - 1);
+  const i = Math.floor(x), f = x - i, a = VIRIDIS[i], b = VIRIDIS[Math.min(i + 1, 9)];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+}
+
+function unpack(b64, kind) {
+  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  return kind === "float32" ? new Float32Array(raw.buffer) : new Uint16Array(raw.buffer);
+}
+
+let REGION = null;
+
+function drawMap() {
+  if (!REGION) return;
+  const canvas = $("map"), ctx = canvas.getContext("2d");
+  const {lon, lat} = REGION;
+  const key = $("map-year").value;
+  const values = key === "mean" ? REGION.mean : REGION.by_spring[key];
+  const scale = REGION.encoding.scale;
+
+  const [x0, x1] = [Math.min(...lon), Math.max(...lon)];
+  const [y0, y1] = [Math.min(...lat), Math.max(...lat)];
+  // One degree of longitude is shorter than one of latitude at this latitude;
+  // without the correction the region leans.
+  const aspect = Math.cos((y0 + y1) / 2 * Math.PI / 180);
+  const pad = 8;
+  const sx = (canvas.width - pad * 2) / ((x1 - x0) * aspect);
+  const sy = (canvas.height - pad * 2) / (y1 - y0);
+  const s = Math.min(sx, sy);
+  const ox = pad + (canvas.width - pad * 2 - (x1 - x0) * aspect * s) / 2;
+  const oy = pad + (canvas.height - pad * 2 - (y1 - y0) * s) / 2;
+  REGION.project = {x0, y1, aspect, s, ox, oy};
+
+  const top = REGION.summary.max;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  // A cell is 4 km on both sides, but a degree of longitude is shorter than a
+  // degree of latitude here, so a square dot leaves the rows striped.
+  const step = REGION.cell_degrees || 0.0417;
+  const w = Math.max(1, Math.ceil(step * aspect * s));
+  const h = Math.max(1, Math.ceil(step * s));
+  for (let i = 0; i < lon.length; i++) {
+    const px = Math.round(ox + (lon[i] - x0) * aspect * s);
+    const py = Math.round(oy + (y1 - lat[i]) * s);
+    const [r, g, b] = viridis((values[i] / scale) / top);
+    for (let dx = 0; dx < w; dx++) for (let dy = 0; dy < h; dy++) {
+      const x = px + dx, y = py + dy;
+      if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) continue;
+      const o = (y * canvas.width + x) * 4;
+      image.data[o] = r; image.data[o + 1] = g; image.data[o + 2] = b; image.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+
+  const stops = [0, .25, .5, .75, 1].map((f) =>
+    `rgb(${viridis(f).map(Math.round).join(",")})`).join(",");
+  $("map-legend").innerHTML = `<div class="ramp"><span>0</span>
+    <span class="bar" style="background: linear-gradient(90deg, ${stops})"></span>
+    <span>${round(top, 0)} offspring per female</span>
+    <span style="margin-left:.6rem">regional mean ${round(REGION.summary.mean, 1)},
+      ${REGION.summary.cell_years.toLocaleString()} cell-years${
+        REGION.summary.failures ? `, ${REGION.summary.failures} did not run` : ""}</span></div>`;
+}
+
+function renderRegion(data) {
+  REGION = data;
+  REGION.lon = unpack(data.lon, "float32");
+  REGION.lat = unpack(data.lat, "float32");
+  REGION.mean = unpack(data.mean, "uint16");
+  REGION.by_spring = Object.fromEntries(
+    Object.entries(data.by_spring).map(([k, v]) => [k, unpack(v, "uint16")]));
+  const select = $("map-year");
+  if (!select.options.length) {
+    select.innerHTML = `<option value="mean">six-year mean</option>` +
+      data.springs.map((s) => `<option value="${s}">spring ${s}</option>`).join("");
+    select.onchange = drawMap;
+  }
+  $("map-status").textContent = data.cached
+    ? "Served from cache — these parameters had been run before."
+    : `Ran ${data.summary.cell_years.toLocaleString()} cell-years.`;
+  drawMap();
+}
+
+/* Clicking the map is the same question the location panel asks, so it fills in
+   the coordinates and answers there rather than growing a second readout. */
+$("map").onclick = (event) => {
+  if (!REGION || !REGION.project) return;
+  const {x0, y1, aspect, s, ox, oy} = REGION.project;
+  const box = $("map").getBoundingClientRect();
+  const scale = $("map").width / box.width;
+  $("lon").value = (x0 + ((event.clientX - box.left) * scale - ox) / (aspect * s)).toFixed(3);
+  $("lat").value = (y1 - ((event.clientY - box.top) * scale - oy) / s).toFixed(3);
+  $("run-point").click();
+  $("location").scrollIntoView({behavior: "smooth", block: "nearest"});
+};
+
 async function withButton(id, work) {
   const button = $(id);
   button.disabled = true;
   try { await work(); }
   catch (error) {
-    const target = id === "run-point" ? "point-out" : "eval-out";
+    const target = {"run-point": "point-out", "run-eval": "eval-out",
+                    "run-region": "map-legend"}[id];
     $(target).innerHTML = `<div class="note"><p>${error.message}</p></div>`;
   } finally { button.disabled = false; }
 }
@@ -258,6 +382,11 @@ $("run-point").onclick = () => withButton("run-point", async () =>
     lat: Number($("lat").value), lon: Number($("lon").value),
     parameters: changedParameters(),
   })));
+
+$("run-region").onclick = () => withButton("run-region", async () => {
+  $("map-status").textContent = "Running…";
+  renderRegion(await call("/api/region", {parameters: changedParameters()}));
+});
 
 $("run-eval").onclick = () => withButton("run-eval", async () =>
   renderEvaluation(await call("/api/evaluate", {parameters: changedParameters()})));
@@ -269,6 +398,7 @@ call("/api/parameters").then((spec) => {
   renderParameters(spec);
   $("run-point").click();
   $("run-eval").click();
+  $("run-region").click();
 });
 </script>
 </body>
