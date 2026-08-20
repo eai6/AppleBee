@@ -51,10 +51,27 @@ def main() -> None:
     parser.add_argument("--branch", default="main")
     parser.add_argument("--environment", default="production",
                         help="GitHub environment the deploy job declares")
+    parser.add_argument("--owner-id", type=int, default=None,
+                        help="numeric owner id; read from GitHub when omitted")
+    parser.add_argument("--repo-id", type=int, default=None,
+                        help="numeric repository id; read from GitHub when omitted")
     parser.add_argument("--name", default="applebee")
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.owner_id is None or args.repo_id is None:
+        ids = subprocess.run(["gh", "api", f"repos/{args.repo}",
+                              "--jq", "{owner: .owner.id, repo: .id}"],
+                             capture_output=True, text=True)
+        if ids.returncode == 0:
+            found = json.loads(ids.stdout)
+            args.owner_id = args.owner_id or found["owner"]
+            args.repo_id = args.repo_id or found["repo"]
+        else:
+            print("  could not read the repository ids from GitHub; pass "
+                  "--owner-id and --repo-id, or the immutable subject will not "
+                  "be trusted")
 
     code, identity = aws(args.profile, "sts", "get-caller-identity", check=False)
     if code != 0:
@@ -66,12 +83,25 @@ def main() -> None:
     provider_arn = f"arn:aws:iam::{account}:oidc-provider/{GITHUB_ISSUER}"
     role_name = f"{args.name}-github-deploy"
     state_bucket = f"{args.name}-pulumi-state-{account[-6:]}"
-    # A workflow job that declares `environment:` gets an *environment* subject
-    # rather than a branch one, so both are trusted. Getting this wrong fails
-    # with "Not authorized to perform sts:AssumeRoleWithWebIdentity" and no
-    # indication of which claim did not match.
+    # GitHub now issues an *immutable* subject carrying the numeric owner and
+    # repository IDs -- `repo:owner@1234/name@5678:...` -- so that renaming a
+    # repository cannot inherit another one's trust. Every tutorial still shows
+    # the older `repo:owner/name:...` form, and a policy written that way fails
+    # with "Not authorized to perform sts:AssumeRoleWithWebIdentity" naming
+    # neither the claim nor the value. Both forms are trusted here: the current
+    # one because it is what arrives, the older one so this keeps working if
+    # GitHub reverts.
+    #
+    # A job that declares `environment:` gets an environment subject rather than
+    # a branch one, so both of those are covered too.
+    owner, _, repository = args.repo.partition("/")
+    identified = (f"{owner}@{args.owner_id}/{repository}@{args.repo_id}"
+                  if args.owner_id and args.repo_id else None)
     subjects = [f"repo:{args.repo}:ref:refs/heads/{args.branch}",
                 f"repo:{args.repo}:environment:{args.environment}"]
+    if identified:
+        subjects += [f"repo:{identified}:ref:refs/heads/{args.branch}",
+                     f"repo:{identified}:environment:{args.environment}"]
 
     print(f"account      : {account}")
     print(f"region       : {args.region}")
