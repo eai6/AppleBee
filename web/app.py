@@ -226,13 +226,16 @@ class _Handler(BaseHTTPRequestHandler):
         sys.stderr.write(f"  {self.command} {self.path} -> {args[1]}\n")
 
 
-def serve(port: int = 8000) -> None:
-    print(f"AppleBee on http://127.0.0.1:{port}  (ctrl-c to stop)")
-    ThreadingHTTPServer(("127.0.0.1", port), _Handler).serve_forever()
+def serve(port: int = 8000, host: str = "127.0.0.1") -> None:
+    print(f"AppleBee on http://{host}:{port}  (ctrl-c to stop)")
+    ThreadingHTTPServer((host, port), _Handler).serve_forever()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--port", type=int, default=8000)
-    serve(parser.parse_args().port)
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="0.0.0.0 to accept connections from outside")
+    args = parser.parse_args()
+    serve(args.port, args.host)

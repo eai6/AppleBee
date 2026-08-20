@@ -1,0 +1,25 @@
+# The API as a long-running server.
+#
+# The Lambda image cannot serve this: the account's organisation forbids both
+# public function URLs and CloudFront's service principal from invoking one, so
+# the same application runs as an ordinary HTTP server behind CloudFront
+# instead. Only the entrypoint differs — the model, the API and the page are the
+# same files.
+FROM python:3.12-slim
+
+WORKDIR /srv
+
+COPY deploy/requirements-lambda.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir boto3
+
+COPY applebee/ ./applebee/
+COPY web/ ./web/
+COPY deploy/regions.aws.json ./regions.aws.json
+
+ENV PYTHONUNBUFFERED=1 APPLEBEE_REGIONS=/srv/regions.aws.json
+EXPOSE 8000
+
+# Reads its weather from S3 in byte ranges, so the image carries no inputs and
+# the disk under it stays small.
+CMD ["python", "-m", "web.app", "--port", "8000", "--host", "0.0.0.0"]

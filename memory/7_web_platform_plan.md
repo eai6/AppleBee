@@ -469,6 +469,23 @@ Two failures on the first CI run, both worth remembering:
   of the stack into a buildx step with `--provenance=false --sbom=false`, and
   Pulumi is handed the URI. That makes the registry a prerequisite — the image
   must exist before the stack can name it — so the bootstrap creates it too.
+- **The account forbids public Lambda function URLs.** The stack deployed, the
+  resource policy allowed anonymous invoke (twice over), the URL's auth type read
+  `NONE`, and it still answered 403 to everyone. Invoking the function directly
+  returned 200, which ruled out the code, the image and the runtime in one step.
+  The account belongs to a PSU organisation (`o-uq971xftsd`) whose guardrails
+  forbid public function URLs, and no resource policy overrides an SCP.
+
+  So the URL is signed rather than open: CloudFront fronts it with an Origin
+  Access Control signing every request with SigV4, and the function admits that
+  one distribution and nothing else. This was in the plan as a later step, for
+  the CDN and a custom domain; the guardrail simply moved it forward, and it
+  stays inside the free tier.
+- **Moving a resource out of the program deletes it.** Taking ECR out of Pulumi
+  so buildx could own the image meant the next `up` destroyed the repository —
+  `force_delete=True`, images and all — and the following deploy could not push.
+  Obvious in hindsight, invisible in the diff. The bootstrap recreates it, and
+  Pulumi no longer knows about it.
 - **Two smaller ones in the same apply.** S3 rejects a tag value containing a
   comma. And Pulumi's auto-naming produced `api-role-14e86ff`, outside the
   `applebee-*` names the deploy role may create — fixed by naming the role

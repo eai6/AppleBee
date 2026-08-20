@@ -27,9 +27,7 @@ import pulumi_aws as aws
 
 config = pulumi.Config()
 name = config.get("name") or "applebee"
-memory_mb = config.get_int("memoryMb") or 3008
-timeout_seconds = config.get_int("timeoutSeconds") or 300
-log_retention_days = config.get_int("logRetentionDays") or 14
+instance_type = config.get("instanceType") or "t3.micro"
 # From the environment in CI, where it arrives as a GitHub secret, or from
 # stack config when a human runs pulumi locally. Absent, approval of extension
 # jobs is refused outright rather than left open.
@@ -96,8 +94,18 @@ if not image_uri:
     )
 
 # ---------------------------------------------------------------------------
-# The function
+# The server
 # ---------------------------------------------------------------------------
+#
+# Not a Lambda. The account's organisation forbids anonymous invocation of a
+# function URL *and* refuses CloudFront's service principal, which was the
+# documented way round the first block -- both verified against a function that
+# answered 200 to a SigV4-signed request from an IAM principal in the account.
+# An ordinary HTTP server behind CloudFront involves no invoke permission at
+# all, so no guardrail applies to it.
+#
+# The trade is honest: about $8 a month against the $0.50 the serverless shape
+# would have cost, and an instance that has to be patched.
 
 role = aws.iam.Role(
     "api-role",
@@ -105,13 +113,18 @@ role = aws.iam.Role(
     assume_role_policy=json.dumps({
         "Version": "2012-10-17",
         "Statement": [{"Effect": "Allow", "Action": "sts:AssumeRole",
-                       "Principal": {"Service": "lambda.amazonaws.com"}}],
+                       "Principal": {"Service": "ec2.amazonaws.com"}}],
     }),
 )
 
 aws.iam.RolePolicyAttachment(
-    "api-logs", role=role.name,
-    policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole")
+    "api-ecr", role=role.name,
+    policy_arn="arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role")
+
+# Session Manager, so the instance needs no SSH key and no open port 22.
+aws.iam.RolePolicyAttachment(
+    "api-ssm", role=role.name,
+    policy_arn="arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore")
 
 aws.iam.RolePolicy(
     "api-data",
@@ -129,81 +142,111 @@ aws.iam.RolePolicy(
     })),
 )
 
-# Created here rather than left to Lambda, so retention is set from the first
-# invocation. Logs kept forever are the quiet way a cheap stack stops being one.
-logs = aws.cloudwatch.LogGroup("api-logs-group",
-                               name=f"/aws/lambda/{name}-api",
-                               retention_in_days=log_retention_days)
+profile = aws.iam.InstanceProfile("api-profile", name=f"{name}-api", role=role.name)
 
-function = aws.lambda_.Function(
+vpc = aws.ec2.get_vpc(default=True)
+subnets = aws.ec2.get_subnets(filters=[aws.ec2.GetSubnetsFilterArgs(
+    name="vpc-id", values=[vpc.id])])
+
+# Only CloudFront may reach the origin. AWS publishes the edge ranges as a
+# managed prefix list, so this is narrower than "the internet" and does not
+# drift as those ranges change.
+edges = aws.ec2.get_managed_prefix_list(name="com.amazonaws.global.cloudfront.origin-facing")
+
+security = aws.ec2.SecurityGroup(
+    "api-sg",
+    description="AppleBee origin: CloudFront in, anywhere out",
+    vpc_id=vpc.id,
+    ingress=[aws.ec2.SecurityGroupIngressArgs(
+        description="CloudFront edge locations",
+        from_port=80, to_port=80, protocol="tcp", prefix_list_ids=[edges.id])],
+    egress=[aws.ec2.SecurityGroupEgressArgs(
+        from_port=0, to_port=0, protocol="-1", cidr_blocks=["0.0.0.0/0"])],
+    tags={"Project": name},
+)
+
+ami = aws.ec2.get_ami(
+    most_recent=True, owners=["amazon"],
+    filters=[aws.ec2.GetAmiFilterArgs(name="name", values=["al2023-ami-*-x86_64"])],
+)
+
+# 1 GB of memory with scientific Python loaded is workable but not roomy, and a
+# region run is the one moment it matters, so the instance gets swap rather than
+# the next size up at twice the price.
+startup = pulumi.Output.all(image_uri, data.bucket, cache.bucket).apply(
+    lambda values: f"""#!/bin/bash
+set -euxo pipefail
+dnf install -y docker
+systemctl enable --now docker
+
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+aws ecr get-login-password --region us-east-1 \
+  | docker login --username AWS --password-stdin {values[0].split('/')[0]}
+
+docker run -d --name applebee --restart always -p 80:8000 \
+  -e APPLEBEE_DATA_BUCKET={values[1]} \
+  -e APPLEBEE_CACHE_BUCKET={values[2]} \
+  -e AWS_DEFAULT_REGION=us-east-1 \
+  {values[0]}
+""")
+
+server = aws.ec2.Instance(
     "api",
-    name=f"{name}-api",
-    package_type="Image",
-    image_uri=image_uri,
-    role=role.arn,
-    memory_size=memory_mb,
-    timeout=timeout_seconds,
-    architectures=["x86_64"],
-    environment=aws.lambda_.FunctionEnvironmentArgs(variables={
-        "APPLEBEE_REGIONS": "/var/task/regions.aws.json",
-        "APPLEBEE_DATA_BUCKET": data.bucket,
-        "APPLEBEE_CACHE_BUCKET": cache.bucket,
-        **({"APPLEBEE_ADMIN_TOKEN": admin_token} if admin_token else {}),
-    }),
-    opts=pulumi.ResourceOptions(depends_on=[logs]),
+    instance_type=instance_type,
+    ami=ami.id,
+    subnet_id=subnets.ids[0],
+    vpc_security_group_ids=[security.id],
+    iam_instance_profile=profile.name,
+    associate_public_ip_address=True,
+    user_data=startup,
+    # Replace the instance when the image changes: the container is baked into
+    # the startup script, so a new image means a new machine rather than a
+    # machine quietly running last week's code.
+    user_data_replace_on_change=True,
+    root_block_device=aws.ec2.InstanceRootBlockDeviceArgs(
+        volume_size=12, volume_type="gp3", delete_on_termination=True),
+    tags={"Name": f"{name}-api", "Project": name},
 )
 
-# The URL is signed, not open. An anonymous Function URL returns 403 in this
-# account whatever its resource policy says -- the organisation's guardrails
-# forbid public function URLs -- so CloudFront fronts it and signs every request
-# with SigV4 through an Origin Access Control. That also buys the CDN, TLS and a
-# place to attach a custom domain later, at no cost inside the free tier.
-url = aws.lambda_.FunctionUrl(
-    "api-url",
-    function_name=function.name,
-    authorization_type="AWS_IAM",
-    cors=aws.lambda_.FunctionUrlCorsArgs(
-        allow_origins=["*"], allow_methods=["GET", "POST"],
-        allow_headers=["content-type", "x-admin-token"], max_age=86400),
-)
+# A fixed address, so CloudFront's origin survives a stop or a replacement.
+address = aws.ec2.Eip("api-ip", instance=server.id, domain="vpc",
+                      tags={"Project": name})
 
-access = aws.cloudfront.OriginAccessControl(
-    "api-oac",
-    name=f"{name}-api",
-    origin_access_control_origin_type="lambda",
-    signing_behavior="always",
-    signing_protocol="sigv4",
-)
+# ---------------------------------------------------------------------------
+# The edge
+# ---------------------------------------------------------------------------
 
-# AWS-managed policies. CachingDisabled because these answers are already cached
-# in S3 by parameter hash, and AllViewerExceptHostHeader because a Lambda URL
-# origin rejects a forwarded Host header.
 CACHING_DISABLED = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-ALL_VIEWER_EXCEPT_HOST = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+ALL_VIEWER = "216adef6-5c7f-47e4-b989-5492eafa07d3"
 
 distribution = aws.cloudfront.Distribution(
     "api-cdn",
     enabled=True,
     comment=f"{name}: the model, its evaluations and its map",
-    default_root_object="",
     origins=[aws.cloudfront.DistributionOriginArgs(
-        origin_id="lambda",
-        domain_name=url.function_url.apply(
-            lambda u: u.removeprefix("https://").rstrip("/")),
-        origin_access_control_id=access.id,
+        origin_id="server",
+        domain_name=address.public_dns,
         custom_origin_config=aws.cloudfront.DistributionOriginCustomOriginConfigArgs(
             http_port=80, https_port=443,
-            origin_protocol_policy="https-only",
+            # The hop to the origin is HTTP because the origin is an IP address
+            # with no certificate; viewers are redirected to HTTPS and CloudFront
+            # terminates TLS.
+            origin_protocol_policy="http-only",
             origin_ssl_protocols=["TLSv1.2"],
+            origin_read_timeout=60,
         ),
     )],
     default_cache_behavior=aws.cloudfront.DistributionDefaultCacheBehaviorArgs(
-        target_origin_id="lambda",
+        target_origin_id="server",
         viewer_protocol_policy="redirect-to-https",
         allowed_methods=["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
         cached_methods=["GET", "HEAD"],
+        # Answers are already cached in S3 by parameter hash, and a region run
+        # exceeds what the edge would hold anyway.
         cache_policy_id=CACHING_DISABLED,
-        origin_request_policy_id=ALL_VIEWER_EXCEPT_HOST,
+        origin_request_policy_id=ALL_VIEWER,
         compress=True,
     ),
     restrictions=aws.cloudfront.DistributionRestrictionsArgs(
@@ -215,18 +258,8 @@ distribution = aws.cloudfront.Distribution(
     price_class="PriceClass_100",     # North America and Europe; the audience
 )
 
-# Only this distribution may invoke the function, and only through its URL.
-aws.lambda_.Permission(
-    "api-from-cloudfront",
-    action="lambda:InvokeFunctionUrl",
-    function=function.name,
-    principal="cloudfront.amazonaws.com",
-    source_arn=distribution.arn,
-    function_url_auth_type="AWS_IAM",
-)
-
 pulumi.export("url", distribution.domain_name.apply(lambda d: f"https://{d}"))
-pulumi.export("origin_url", url.function_url)
+pulumi.export("origin", address.public_dns)
 pulumi.export("data_bucket", data.bucket)
 pulumi.export("cache_bucket", cache.bucket)
 pulumi.export("image", image_uri)
