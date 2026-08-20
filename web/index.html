@@ -3,422 +3,124 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AppleBee — reproductive success of wild solitary pollinators</title>
-<style>
-  :root {
-    --ink: #1a1c1a; --ink-2: #4a514c; --ink-3: #79837c;
-    --bg: #fbfcfb; --panel: #ffffff; --line: #e2e7e3;
-    --accent: #2f6d46; --accent-soft: #eaf3ed; --warn: #8a5a12; --warn-soft: #fdf4e3;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --ink: #e8ece9; --ink-2: #a9b3ac; --ink-3: #7d8781;
-      --bg: #141715; --panel: #1c201d; --line: #2c322e;
-      --accent: #6fb98c; --accent-soft: #1e2a23; --warn: #d8a75a; --warn-soft: #2a2418;
-    }
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink); line-height: 1.5;
-    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  }
-  header { border-bottom: 1px solid var(--line); padding: 1.6rem 1.5rem 1.3rem; }
-  header h1 { margin: 0 0 .3rem; font-size: 1.35rem; letter-spacing: -.01em; }
-  header p { margin: 0; color: var(--ink-2); max-width: 62ch; }
-  main {
-    max-width: 1180px; margin: 0 auto; padding: 1.5rem;
-    display: grid; gap: 1.5rem; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  @media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); } }
-  section {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 10px; padding: 1.1rem 1.2rem 1.3rem;
-  }
-  h2 { font-size: 1.02rem; margin: 0 0 .2rem; letter-spacing: -.005em; }
-  .sub { color: var(--ink-3); font-size: .86rem; margin: 0 0 1rem; }
-  label { display: block; font-size: .8rem; color: var(--ink-2); margin-bottom: .2rem; }
-  input, select, button {
-    font: inherit; color: inherit; background: var(--bg);
-    border: 1px solid var(--line); border-radius: 6px; padding: .42rem .55rem; width: 100%;
-  }
-  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-  button {
-    background: var(--accent); color: #fff; border-color: transparent;
-    font-weight: 550; cursor: pointer; padding: .55rem 1rem; width: auto;
-  }
-  button:hover { filter: brightness(1.08); }
-  button[disabled] { opacity: .55; cursor: progress; }
-  .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: .6rem; align-items: end; }
-  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-  th, td { text-align: right; padding: .34rem .4rem; border-bottom: 1px solid var(--line); }
-  th:first-child, td:first-child { text-align: left; }
-  th { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-3); font-weight: 600; }
-  .headline { display: flex; align-items: baseline; gap: .6rem; margin: 1rem 0 .2rem; }
-  .headline b { font-size: 2rem; font-weight: 600; letter-spacing: -.02em; }
-  .headline span { color: var(--ink-2); font-size: .9rem; }
-  .note { background: var(--warn-soft); color: var(--warn); border-radius: 7px;
-          padding: .6rem .7rem; font-size: .82rem; margin-top: .9rem; }
-  .note p { margin: 0 0 .4rem; } .note p:last-child { margin: 0; }
-  .params { display: grid; grid-template-columns: 1fr 1fr; gap: .55rem .7rem; }
-  .params .field small { color: var(--ink-3); font-size: .72rem; display: block; }
-  fieldset { border: 0; padding: 0; margin: 0 0 .9rem; }
-  legend { font-size: .76rem; text-transform: uppercase; letter-spacing: .05em;
-           color: var(--ink-3); font-weight: 600; padding: 0 0 .35rem; }
-  .changed input { border-color: var(--accent); background: var(--accent-soft); }
-  .verdict { font-size: .82rem; color: var(--ink-2); }
-  .verdict b { color: var(--ink); }
-  .bad { color: var(--warn); }
-  .muted { color: var(--ink-3); font-size: .8rem; }
-  .map-controls { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap;
-                  margin-bottom: .8rem; }
-  .map-controls select { width: auto; }
-  #map { width: 100%; height: auto; border-radius: 8px; cursor: crosshair;
-         background: var(--bg); }
-  .ramp { display: flex; align-items: center; gap: .5rem; margin-top: .5rem;
-          font-size: .78rem; color: var(--ink-3); }
-  .ramp .bar { height: 9px; flex: 0 0 220px; border-radius: 5px; }
-  svg text { fill: var(--ink-3); font-size: 10px; }
-</style>
+<title>AppleBee — wild bee forecasts for northeastern orchards</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="/style.css">
 </head>
 <body>
-<header>
-  <h1>AppleBee</h1>
-  <p>A mechanistic model of <i>Osmia cornifrons</i> reproductive success. Ask what it
-     predicts at a location, or change its parameters and see what happens to the
-     two evaluations the paper rests on.</p>
-</header>
-
-<main>
-  <section id="location">
-    <h2>At a location</h2>
-    <p class="sub">Offspring per female, for every spring the inputs cover.</p>
-    <div class="row">
-      <div><label for="lat">latitude</label><input id="lat" value="42.87" inputmode="decimal"></div>
-      <div><label for="lon">longitude</label><input id="lon" value="-77.01" inputmode="decimal"></div>
-      <button id="run-point">Predict</button>
+<div class="app">
+  <!-- ================= left: where, and when ================= -->
+  <div class="rail">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true">
+        <circle cx="15" cy="15" r="13" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+        <path d="M15 6.5c3.6 2.6 5.4 5.4 5.4 8.5S18.6 20.9 15 23.5C11.4 20.9 9.6 18.1 9.6 15S11.4 9.1 15 6.5z"
+              fill="var(--accent)" opacity=".22"/>
+        <circle cx="15" cy="15" r="3.1" fill="var(--accent)"/>
+      </svg>
+      <div>
+        <b>AppleBee</b>
+        <span>Wild bee forecasts for northeastern orchards</span>
+      </div>
     </div>
-    <div id="point-out"></div>
-  </section>
 
-  <section id="evaluation">
-    <h2>Against the field data</h2>
-    <p class="sub">Both evaluations, re-fitted under whatever parameters you set below.</p>
-    <button id="run-eval">Run evaluation</button>
-    <div id="eval-out"></div>
-  </section>
+    <div class="card">
+      <div>
+        <label class="lab" for="q">Find your orchard</label>
+        <div class="searchbox">
+          <div class="search">
+            <input id="q" type="text" placeholder="Town, county, or address"
+                   autocomplete="off" spellcheck="false">
+            <button id="go" title="Search">Go</button>
+          </div>
+          <div class="matches" id="matches" role="listbox"></div>
+        </div>
+        <p class="empty" style="margin:9px 0 0" id="hint">Or click anywhere on the map.</p>
+      </div>
 
-  <section id="map-panel" style="grid-column: 1 / -1">
-    <h2>Across the Northeast</h2>
-    <p class="sub">Every cell carrying both weather and a floral index, run under
-       the parameters below. Click the map to predict at that point.</p>
-    <div class="map-controls">
-      <select id="map-year"></select>
-      <button id="run-region">Run the region</button>
-      <span class="muted" id="map-status">44,756 cells &mdash; about 40 s if these
-        parameters have not been run before.</span>
+      <div>
+        <label class="lab">What to measure</label>
+        <div class="modes">
+          <button class="ghost" id="m-cell" aria-pressed="true">This spot</button>
+          <button class="ghost" id="m-area" aria-pressed="false">Radius</button>
+          <button class="ghost" id="m-poly" aria-pressed="false">Draw area</button>
+        </div>
+        <div class="radius" id="radius-row" hidden>
+          <input id="radius" type="range" min="2" max="30" value="8" step="1"
+                 aria-label="Radius in kilometres">
+          <b class="mono" id="radius-out">8 km</b>
+        </div>
+        <div class="drawbar" id="draw-row" hidden>
+          <p class="empty" id="draw-hint">Click the map to place corners.</p>
+          <div class="drawbtns">
+            <button class="ghost" id="draw-undo">Undo</button>
+            <button class="ghost" id="draw-clear">Clear</button>
+            <button id="draw-close">Close shape</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label class="lab" for="year-row">Season</label>
+        <div class="years" id="year-row"></div>
+        <div class="actions" style="margin-top:11px">
+          <button class="ghost" id="download">Download map data (CSV)</button>
+        </div>
+        <p class="empty" id="download-hint" style="margin:7px 0 0">
+          Every cell and every season, for making your own figures.
+        </p>
+      </div>
     </div>
-    <canvas id="map" width="1100" height="620"></canvas>
-    <div id="map-legend"></div>
-  </section>
 
-  <section id="parameters" style="grid-column: 1 / -1">
-    <h2>Parameters</h2>
-    <p class="sub">Eighteen values, every one from the literature. Changed fields are
-       highlighted; both panels above use them.</p>
-    <div id="param-form"></div>
-    <p class="muted" id="param-note"></p>
-  </section>
-</main>
+    <div class="card">
+      <details class="adv">
+        <summary>Advanced: model settings</summary>
+        <p class="empty" style="margin:11px 0 0">
+          Every value comes from the published literature. Most people never touch
+          these &mdash; change one and the map and every forecast is recalculated
+          from it.
+        </p>
+        <div id="param-groups"></div>
+        <div class="params" style="margin-top:12px">
+          <div class="full" style="display:flex; gap:7px">
+            <button class="ghost" id="param-reset" style="flex:none">Reset</button>
+            <button id="param-run" style="flex:1">Recalculate the region</button>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
 
-<script>
-const $ = (id) => document.getElementById(id);
-const round = (x, n = 2) => (x === null || x === undefined) ? "—" : Number(x).toFixed(n);
+  <!-- ================= centre: the map ================= -->
+  <div class="stage">
+    <div id="map" aria-label="Predicted wild bee abundance across the northeastern United States"></div>
+    <div class="legend">
+      <span>Offspring per female, <b id="leg-year" class="mono">&mdash;</b></span>
+      <span class="ramp"></span>
+      <span class="ends mono"><b>0</b><b id="leg-max">&mdash;</b></span>
+    </div>
+    <div class="tip" id="tip" role="status"></div>
+  </div>
 
-// Grouped the way the model runs, so the form reads as the life cycle rather
-// than as an alphabetical list of eighteen numbers.
-const GROUPS = [
-  ["Emergence", ["emergence_base_temp", "emergence_thermal_constant", "emergence_start_doy"]],
-  ["Egg production", ["mating_days", "longevity", "temperature_threshold",
-                      "precipitation_threshold", "forage_threshold",
-                      "eggs_high_forage", "eggs_low_forage"]],
-  ["Egg and larva mortality", ["egg_larva_days", "mortality_factor",
-                               "lower_dev_threshold", "upper_dev_threshold"]],
-  ["Winter mortality", ["prewinter_start", "prewinter_end",
-                        "diapause_temp_threshold", "winter_mortality_factor"]],
-];
+  <!-- ================= right: what it means ================= -->
+  <div class="rail right">
+    <div class="card" id="readout">
+      <div class="empty">
+        <b>Nothing selected yet</b>
+        Search for your town, or click anywhere on the map, and this panel will
+        show what the model expects there.
+      </div>
+    </div>
+  </div>
+</div>
 
-let SPEC = null;
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+  <article id="sheet-body"></article>
+</div>
 
-async function call(path, body) {
-  const options = body ? {method: "POST", headers: {"content-type": "application/json"},
-                          body: JSON.stringify(body)} : {};
-  const response = await fetch(path, options);
-  const payload = await response.json();
-  if (response.status === 202) return {pending: payload};
-  if (!response.ok) throw new Error(payload.error || response.statusText);
-  return payload;
-}
-
-/* A region run is 268,536 cell-years and is done in the background, so the
-   first request for a given parameter set answers "running" and this asks
-   again. Every later visitor with the same parameters gets it at once. */
-async function callUntilReady(path, body, onWait) {
-  for (let attempt = 0; attempt < 40; attempt++) {
-    const answer = await call(path, body);
-    if (!answer.pending) return answer;
-    onWait(answer.pending, attempt);
-    await new Promise((done) => setTimeout(done, 15000));
-  }
-  throw new Error("The region run is taking longer than expected. Try again shortly.");
-}
-
-/* Only the parameters that differ are sent, so a request says what it changes
-   and the server's own defaults remain the single source of truth. */
-function changedParameters() {
-  if (!SPEC) return {};
-  const changed = {};
-  for (const field of SPEC.parameters) {
-    if (field.type === "date") continue;
-    const input = $("p-" + field.name);
-    const value = Number(input.value);
-    if (Number.isFinite(value) && value !== field.default) changed[field.name] = value;
-    input.parentElement.classList.toggle("changed", value !== field.default);
-  }
-  $("param-note").textContent = Object.keys(changed).length
-    ? Object.keys(changed).length + " parameter(s) differ from the literature defaults."
-    : "All parameters at their literature defaults.";
-  return changed;
-}
-
-function renderParameters(spec) {
-  SPEC = spec;
-  const byName = Object.fromEntries(spec.parameters.map((f) => [f.name, f]));
-  $("param-form").innerHTML = GROUPS.map(([title, names]) => `
-    <fieldset><legend>${title}</legend><div class="params">${names.map((name) => {
-      const f = byName[name];
-      if (f.type === "date") {
-        return `<div class="field"><label>${f.description}</label>
-          <input value="${f.default.join(" / ")}" disabled>
-          <small>${f.symbol ? f.symbol + " · " : ""}${f.source}</small></div>`;
-      }
-      return `<div class="field"><label for="p-${name}">${f.description}${f.unit ? " (" + f.unit + ")" : ""}</label>
-        <input id="p-${name}" type="number" step="any" value="${f.default}"
-               min="${f.min}" max="${f.max}">
-        <small>${f.symbol ? f.symbol + " · " : ""}${f.source}</small></div>`;
-    }).join("")}</div></fieldset>`).join("");
-  $("param-form").addEventListener("input", changedParameters);
-  changedParameters();
-}
-
-/* One series, one hue, no gridlines: the shape of the years is the message and
-   the table underneath carries the numbers. */
-function series(springs) {
-  const w = 420, h = 130, pad = {l: 30, r: 12, t: 10, b: 20};
-  const values = springs.map((s) => s.offspring_per_female);
-  const max = Math.max(...values, 1), n = springs.length;
-  const x = (i) => pad.l + (n < 2 ? 0 : i * (w - pad.l - pad.r) / (n - 1));
-  const y = (v) => h - pad.b - (v / max) * (h - pad.t - pad.b);
-  const line = values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-  return `<svg viewBox="0 0 ${w} ${h}" width="100%" role="img"
-      aria-label="offspring per female by spring">
-    <line x1="${pad.l}" y1="${h - pad.b}" x2="${w - pad.r}" y2="${h - pad.b}"
-          stroke="var(--line)"></line>
-    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2"
-          stroke-linejoin="round"></path>
-    ${springs.map((s, i) => `<circle cx="${x(i)}" cy="${y(values[i])}" r="3.4"
-        fill="var(--accent)"></circle>
-      <text x="${x(i)}" y="${h - 6}" text-anchor="middle">${s.spring}</text>`).join("")}
-    <text x="4" y="${y(max) + 4}">${round(max, 0)}</text>
-  </svg>`;
-}
-
-function renderPoint(data) {
-  const springs = data.springs;
-  const context = data.context || {};
-  const mean = springs.reduce((total, s) => total + s.offspring_per_female, 0)
-             / (springs.length || 1);
-  $("point-out").innerHTML = `
-    <div class="headline"><b>${round(mean, 1)}</b>
-      <span>offspring per female, mean of ${springs.length} springs</span></div>
-    <p class="muted">Grid cell ${data.location.cell.col}, ${data.location.cell.row} —
-      ${round(data.location.distance_km, 1)} km from the point you gave.
-      ${context.percentile !== undefined
-        ? `Higher than <b>${round(context.percentile, 0)}%</b> of ${context.regional_cells.toLocaleString()} cells in the region (regional mean ${round(context.regional_mean, 1)}).`
-        : ""}</p>
-    ${series(springs)}
-    <table><thead><tr><th>Spring</th><th>Offspring</th><th>Eggs</th>
-      <th>Emergence</th><th>Cold days</th><th>Wet days</th></tr></thead><tbody>
-      ${springs.map((s) => `<tr><td>${s.spring}</td>
-        <td>${round(s.offspring_per_female, 1)}</td><td>${s.eggs_per_female}</td>
-        <td>${s.emergence_date.slice(5)}</td>
-        <td>${s.days_lost_to_cold}</td><td>${s.days_lost_to_rain}</td></tr>`).join("")}
-    </tbody></table>
-    ${data.failures.length ? `<p class="muted bad">${data.failures.length} year(s) did not run:
-       ${data.failures[0].reason}</p>` : ""}
-    <div class="note">${data.caveats.map((c) => `<p>${c}</p>`).join("")}</div>`;
-}
-
-function verdict(o, baseline) {
-  const shift = baseline ? ` <span class="muted">(was ${round(baseline.r2, 3)})</span>` : "";
-  return `<tr><td>${o.name}</td><td>${round(o.r2, 3)}${shift}</td>
-    <td>${round(o.rmse, 2)}</td><td>${round(o.beta, 2)}</td>
-    <td class="${o.significant ? "" : "bad"}">${o.p < 0.001 ? "&lt;0.001" : round(o.p, 3)}</td>
-    <td>${o.n}${o.sites > 1 ? " / " + o.sites : ""}</td></tr>`;
-}
-
-function renderEvaluation(data) {
-  const base = data.baseline;
-  $("eval-out").innerHTML = `
-    <table><thead><tr><th>Evaluation</th><th>R²</th><th>RMSE</th><th>β</th>
-      <th>p</th><th>n / sites</th></tr></thead><tbody>
-      ${verdict(data.objective_2, base && base.objective_2)}
-      ${verdict(data.objective_3, base && base.objective_3)}
-    </tbody></table>
-    <p class="verdict">Objective 3's p is from ${data.objective_3.p_basis}, because
-      one observation per year makes the mixed model's own standard error
-      optimistic.</p>
-    <div class="note">${data.caveats.map((c) => `<p>${c}</p>`).join("")}</div>`;
-}
-
-/* Viridis, matching the manuscript's figures so the page and the paper are read
-   as the same picture. Perceptually uniform and colourblind-safe. */
-const VIRIDIS = [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],
-                 [31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]];
-function viridis(t) {
-  const x = Math.max(0, Math.min(1, t)) * (VIRIDIS.length - 1);
-  const i = Math.floor(x), f = x - i, a = VIRIDIS[i], b = VIRIDIS[Math.min(i + 1, 9)];
-  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
-}
-
-function unpack(b64, kind) {
-  const raw = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  return kind === "float32" ? new Float32Array(raw.buffer) : new Uint16Array(raw.buffer);
-}
-
-let REGION = null;
-
-function drawMap() {
-  if (!REGION) return;
-  const canvas = $("map"), ctx = canvas.getContext("2d");
-  const {lon, lat} = REGION;
-  const key = $("map-year").value;
-  const values = key === "mean" ? REGION.mean : REGION.by_spring[key];
-  const scale = REGION.encoding.scale;
-
-  const [x0, x1] = [Math.min(...lon), Math.max(...lon)];
-  const [y0, y1] = [Math.min(...lat), Math.max(...lat)];
-  // One degree of longitude is shorter than one of latitude at this latitude;
-  // without the correction the region leans.
-  const aspect = Math.cos((y0 + y1) / 2 * Math.PI / 180);
-  const pad = 8;
-  const sx = (canvas.width - pad * 2) / ((x1 - x0) * aspect);
-  const sy = (canvas.height - pad * 2) / (y1 - y0);
-  const s = Math.min(sx, sy);
-  const ox = pad + (canvas.width - pad * 2 - (x1 - x0) * aspect * s) / 2;
-  const oy = pad + (canvas.height - pad * 2 - (y1 - y0) * s) / 2;
-  REGION.project = {x0, y1, aspect, s, ox, oy};
-
-  const top = REGION.summary.max;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const image = ctx.createImageData(canvas.width, canvas.height);
-  // A cell is 4 km on both sides, but a degree of longitude is shorter than a
-  // degree of latitude here, so a square dot leaves the rows striped.
-  const step = REGION.cell_degrees || 0.0417;
-  const w = Math.max(1, Math.ceil(step * aspect * s));
-  const h = Math.max(1, Math.ceil(step * s));
-  for (let i = 0; i < lon.length; i++) {
-    const px = Math.round(ox + (lon[i] - x0) * aspect * s);
-    const py = Math.round(oy + (y1 - lat[i]) * s);
-    const [r, g, b] = viridis((values[i] / scale) / top);
-    for (let dx = 0; dx < w; dx++) for (let dy = 0; dy < h; dy++) {
-      const x = px + dx, y = py + dy;
-      if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) continue;
-      const o = (y * canvas.width + x) * 4;
-      image.data[o] = r; image.data[o + 1] = g; image.data[o + 2] = b; image.data[o + 3] = 255;
-    }
-  }
-  ctx.putImageData(image, 0, 0);
-
-  const stops = [0, .25, .5, .75, 1].map((f) =>
-    `rgb(${viridis(f).map(Math.round).join(",")})`).join(",");
-  $("map-legend").innerHTML = `<div class="ramp"><span>0</span>
-    <span class="bar" style="background: linear-gradient(90deg, ${stops})"></span>
-    <span>${round(top, 0)} offspring per female</span>
-    <span style="margin-left:.6rem">regional mean ${round(REGION.summary.mean, 1)},
-      ${REGION.summary.cell_years.toLocaleString()} cell-years${
-        REGION.summary.failures ? `, ${REGION.summary.failures} did not run` : ""}</span></div>`;
-}
-
-function renderRegion(data) {
-  REGION = data;
-  REGION.lon = unpack(data.lon, "float32");
-  REGION.lat = unpack(data.lat, "float32");
-  REGION.mean = unpack(data.mean, "uint16");
-  REGION.by_spring = Object.fromEntries(
-    Object.entries(data.by_spring).map(([k, v]) => [k, unpack(v, "uint16")]));
-  const select = $("map-year");
-  if (!select.options.length) {
-    select.innerHTML = `<option value="mean">six-year mean</option>` +
-      data.springs.map((s) => `<option value="${s}">spring ${s}</option>`).join("");
-    select.onchange = drawMap;
-  }
-  $("map-status").textContent = data.cached
-    ? "Served from cache — these parameters had been run before."
-    : `Ran ${data.summary.cell_years.toLocaleString()} cell-years.`;
-  drawMap();
-}
-
-/* Clicking the map is the same question the location panel asks, so it fills in
-   the coordinates and answers there rather than growing a second readout. */
-$("map").onclick = (event) => {
-  if (!REGION || !REGION.project) return;
-  const {x0, y1, aspect, s, ox, oy} = REGION.project;
-  const box = $("map").getBoundingClientRect();
-  const scale = $("map").width / box.width;
-  $("lon").value = (x0 + ((event.clientX - box.left) * scale - ox) / (aspect * s)).toFixed(3);
-  $("lat").value = (y1 - ((event.clientY - box.top) * scale - oy) / s).toFixed(3);
-  $("run-point").click();
-  $("location").scrollIntoView({behavior: "smooth", block: "nearest"});
-};
-
-async function withButton(id, work) {
-  const button = $(id);
-  button.disabled = true;
-  try { await work(); }
-  catch (error) {
-    const target = {"run-point": "point-out", "run-eval": "eval-out",
-                    "run-region": "map-legend"}[id];
-    $(target).innerHTML = `<div class="note"><p>${error.message}</p></div>`;
-  } finally { button.disabled = false; }
-}
-
-$("run-point").onclick = () => withButton("run-point", async () =>
-  renderPoint(await call("/api/point", {
-    lat: Number($("lat").value), lon: Number($("lon").value),
-    parameters: changedParameters(),
-  })));
-
-$("run-region").onclick = () => withButton("run-region", async () => {
-  $("map-status").textContent = "Running…";
-  renderRegion(await callUntilReady("/api/region", {parameters: changedParameters()},
-    (pending, attempt) => {
-      $("map-status").textContent =
-        `${pending.note} (${(attempt + 1) * 15}s)`;
-    }));
-});
-
-$("run-eval").onclick = () => withButton("run-eval", async () =>
-  renderEvaluation(await call("/api/evaluate", {parameters: changedParameters()})));
-
-/* Show the paper's own result on arrival rather than three empty panels. Both
-   default requests are identical for every visitor, which is exactly what the
-   response cache is for: the first one pays, the rest are served from it. */
-call("/api/parameters").then((spec) => {
-  renderParameters(spec);
-  $("run-point").click();
-  $("run-eval").click();
-  $("run-region").click();
-});
-</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="/app.js"></script>
 </body>
 </html>

@@ -15,6 +15,9 @@ Endpoints:
 ``POST /api/evaluate``           the paper's two evaluations under a set
 ``GET  /api/point?lat=&lon=``    one location, year by year
 ``POST /api/point``              the same, with parameters in the body
+``GET  /api/places?q=``          addresses and towns, for the search box
+``POST /api/area``               a radius or a drawn shape, averaged
+``GET  /api/download?years=``    every cell, every chosen spring, as CSV
 ``POST /api/region``             every cell in a region, packed
 ``GET  /api/jobs``               the extension queue
 ``POST /api/jobs``               request that the inputs be extended
@@ -44,6 +47,10 @@ from applebee import api  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent
 INDEX = STATIC / "index.html"
+
+CONTENT_TYPES = {".html": "text/html; charset=utf-8",
+                 ".js": "text/javascript; charset=utf-8",
+                 ".css": "text/css; charset=utf-8"}
 
 # Answers are deterministic in their inputs, so a shared cache is free to use.
 # The platform's cost model depends on it: identical requests are the common
@@ -83,6 +90,18 @@ def route(method: str, path: str, query: dict, body: dict | None,
         return 200, api.evaluate(body.get("parameters"))
     if path == "/api/region" and method in ("GET", "POST"):
         return _region(body, query)
+    if path == "/api/places" and method == "GET":
+        return 200, api.places(query.get("q", ""))
+    if path == "/api/area" and method == "POST":
+        return 200, api.area(body.get("parameters"),
+                             region=body.get("region", api.DEFAULT_REGION),
+                             lat=body.get("lat"), lon=body.get("lon"),
+                             radius_km=body.get("radius_km"),
+                             polygon=body.get("polygon"), years=body.get("years"))
+    if path == "/api/download" and method == "GET":
+        years = [int(y) for y in query.get("years", "").split(",") if y.strip()]
+        return 200, {"csv": api.download(region=query.get("region", api.DEFAULT_REGION),
+                                         years=years or None)}
     if path == "/api/point" and method in ("GET", "POST"):
         lat = _number(body.get("lat", query.get("lat")), "lat")
         lon = _number(body.get("lon", query.get("lon")), "lon")
@@ -218,7 +237,7 @@ def _page(path: str) -> dict:
                 "body": json.dumps({"error": f"no such page {path}"})}
     return {
         "statusCode": 200,
-        "headers": {"content-type": "text/html; charset=utf-8",
+        "headers": {"content-type": CONTENT_TYPES.get(target.suffix, "text/html; charset=utf-8"),
                     "cache-control": "public, max-age=300"},
         "body": target.read_text(),
     }
@@ -253,8 +272,7 @@ class _Handler(BaseHTTPRequestHandler):
         target = INDEX if path in ("/", "/index.html") else STATIC / path.lstrip("/")
         if not target.is_file() or STATIC not in target.resolve().parents:
             return self._json(404, {"error": f"no such page {path}"})
-        kind = {".html": "text/html", ".js": "text/javascript",
-                ".css": "text/css"}.get(target.suffix, "application/octet-stream")
+        kind = CONTENT_TYPES.get(target.suffix, "application/octet-stream")
         self._send(200, target.read_bytes(), kind)
 
     def _json(self, status: int, payload: dict) -> None:

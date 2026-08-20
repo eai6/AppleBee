@@ -269,3 +269,61 @@ def test_a_finished_region_run_is_returned_at_once(tmp_path, monkeypatch):
     api._cache_write(key, {"region": "northeast", "cells": 3})
     status, payload = answer("POST", "/api/region", {}, {"parameters": {"longevity": 28}})
     assert status == 200 and payload["cached"] is True
+
+
+# ---------------------------------------------------------------------------
+# area, places, download
+# ---------------------------------------------------------------------------
+
+
+@needs_northeast
+def test_a_radius_averages_the_cells_inside_it():
+    answer = api.area(lat=42.87, lon=-77.01, radius_km=8)
+    assert answer["location"]["cells"] > 1
+    assert len(answer["springs"]) == 6
+    # Every driver is a real per-cell-year quantity, not a placeholder: the
+    # emergence date has to move between seasons.
+    dates = {s["emergence_date"] for s in answer["springs"]}
+    assert len(dates) > 1
+
+
+@needs_northeast
+def test_a_drawn_shape_takes_the_cells_whose_centres_fall_inside():
+    ring = [[-77.1, 42.8], [-76.9, 42.8], [-76.9, 42.95], [-77.1, 42.95]]
+    answer = api.area(polygon=ring)
+    assert answer["location"]["kind"] == "polygon"
+    assert answer["location"]["cells"] >= 4
+
+
+def test_a_shape_smaller_than_a_cell_is_refused_with_advice():
+    with pytest.raises(ValueError, match="wider"):
+        api.area(polygon=[[-77.0, 42.8], [-76.999, 42.8], [-76.999, 42.801]])
+
+
+def test_a_shape_needs_three_corners():
+    with pytest.raises(ValueError, match="three corners"):
+        api.area(polygon=[[-77.0, 42.8], [-76.9, 42.9]])
+
+
+def test_an_area_needs_either_a_shape_or_a_radius():
+    with pytest.raises(ValueError, match="polygon"):
+        api.area(lat=42.87, lon=-77.01)
+
+
+@needs_northeast
+def test_the_download_is_one_row_per_cell_and_one_column_per_spring():
+    csv = api.download(years=[2018, 2019])
+    header, first, *rest = csv.splitlines()
+    assert header == "lon,lat,spring_2018,spring_2019"
+    assert len(rest) + 1 == 44759          # every cell, once
+    assert len(first.split(",")) == 4
+
+
+@needs_northeast
+def test_asking_for_a_spring_that_was_never_run_says_which_exist():
+    with pytest.raises(ValueError, match="this run covers"):
+        api.download(years=[1999])
+
+
+def test_a_search_for_nothing_returns_nothing_rather_than_failing():
+    assert api.places("")["places"] == []

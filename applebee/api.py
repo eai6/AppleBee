@@ -303,6 +303,132 @@ def point(lat: float, lon: float, params: ModelParams | dict | None = None, *,
     }
 
 
+# A drawn shape or a wide radius can cover a lot of ground, and every cell in it
+# is a full model run. This is the ceiling before the request is refused, which
+# is roughly a 40 km radius -- far larger than any orchard's foraging landscape.
+MAX_AREA_CELLS = 1200
+
+
+def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
+         lat: float | None = None, lon: float | None = None,
+         radius_km: float | None = None, polygon: list | None = None,
+         years: list[int] | None = None) -> dict:
+    """What the model predicts across a group of cells, not just one.
+
+    Either a radius around a point, or a drawn ring of ``[lon, lat]`` corners. A
+    cell belongs to the area when its **centre** falls inside, so no cell is ever
+    counted twice by two adjacent shapes.
+    """
+    params = _as_params(params)
+    dataset, tmean, ppt, forage = _region(region)
+    cells = _runnable_cells(region)
+    lons, lats = cells["lon"].to_numpy(), cells["lat"].to_numpy()
+
+    if polygon:
+        ring = [(float(a), float(b)) for a, b in polygon]
+        if len(ring) < 3:
+            raise ValueError("a drawn area needs at least three corners")
+        inside = _inside(lons, lats, ring)
+        centre = (float(np.mean([p[1] for p in ring])), float(np.mean([p[0] for p in ring])))
+        described = f"{int(inside.sum())} cells inside the drawn area"
+    elif lat is not None and lon is not None and radius_km:
+        inside = _haversine_km(lat, lon, lats, lons) <= float(radius_km)
+        centre = (float(lat), float(lon))
+        described = f"{int(inside.sum())} cells within {radius_km:g} km"
+    else:
+        raise ValueError("give either a polygon, or a lat, lon and radius_km")
+
+    chosen = cells[inside]
+    if chosen.empty:
+        raise ValueError(
+            "that area does not contain the centre of any 4 km cell; draw a wider one"
+        )
+    if len(chosen) > MAX_AREA_CELLS:
+        raise ValueError(
+            f"that area covers {len(chosen):,} cells, more than the {MAX_AREA_CELLS:,} "
+            "this will run at once; draw a smaller one"
+        )
+
+    model = AppleBee(tmean, ppt, forage, params)
+    weather_years = list(years) if years else _weather_years(region)
+    pairs = list(zip(chosen["col"].astype(int), chosen["row"].astype(int)))
+    results, failures = model.run(pairs, weather_years)
+
+    springs = []
+    for spring, group in results.groupby("offspring_year"):
+        springs.append({
+            "spring": int(spring),
+            "offspring_per_female": round(float(group.offspring.mean()), 2),
+            "eggs_per_female": round(float(group.eggs.mean()), 1),
+            "emergence_day_of_year": int(round(float(group.emergence_doy.mean()))),
+            "emergence_date": _day_of_year(int(spring) - 1,
+                                           int(round(float(group.emergence_doy.mean())))),
+            "forage_index": round(float(group.forage_quality.mean()), 3),
+            "days_lost_to_cold": round(float(group.no_egg_days_temperature.mean()), 1),
+            "days_lost_to_rain": round(float(group.no_egg_days_precipitation.mean()), 1),
+            "cells": int(len(group)),
+        })
+    springs.sort(key=lambda s: s["spring"])
+
+    return {
+        "location": {
+            "requested": {"lat": centre[0], "lon": centre[1]},
+            "cells": int(len(chosen)),
+            "description": described,
+            "region": region,
+            "kind": "polygon" if polygon else "radius",
+            "radius_km": radius_km,
+        },
+        "springs": springs,
+        "failures": [{"reason": r} for r in failures.get("reason", [])[:3]]
+                    if len(failures) else [],
+        "context": _context(region, springs),
+        "parameters": params.to_dict(),
+        "caveats": _point_caveats(0.0),
+    }
+
+
+def _inside(lons: np.ndarray, lats: np.ndarray, ring: list) -> np.ndarray:
+    """Ray casting, vectorised over every cell at once."""
+    hit = np.zeros(len(lons), dtype=bool)
+    for i in range(len(ring)):
+        (xi, yi), (xj, yj) = ring[i], ring[i - 1]
+        crosses = (yi > lats) != (yj > lats)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            at = (xj - xi) * (lats - yi) / np.where(yj == yi, np.nan, yj - yi) + xi
+        hit ^= crosses & (lons < at)
+    return hit
+
+
+def _day_of_year(year: int, doy: int) -> str:
+    return str((pd.Timestamp(year=year, month=1, day=1)
+                + pd.Timedelta(days=doy - 1)).date())
+
+
+def download(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
+             years: list[int] | None = None) -> str:
+    """Every cell's prediction, as CSV, for making figures outside the site.
+
+    One row per cell and one column per spring -- the shape a plotting script
+    wants when it draws the seasons side by side -- taken from the cached
+    regional run rather than recomputed.
+    """
+    answer = region_run(params, region=region)
+    scale = answer["encoding"]["scale"]
+    lon = np.frombuffer(base64.b64decode(answer["lon"]), dtype="float32")
+    lat = np.frombuffer(base64.b64decode(answer["lat"]), dtype="float32")
+    springs = [s for s in answer["springs"] if not years or s in years]
+    if not springs:
+        raise ValueError(f"no such spring; this run covers {answer['springs']}")
+
+    frame = pd.DataFrame({"lon": np.round(lon, 5), "lat": np.round(lat, 5)})
+    for spring in springs:
+        frame[f"spring_{spring}"] = (
+            np.frombuffer(base64.b64decode(answer["by_spring"][str(spring)]),
+                          dtype="uint16") / scale)
+    return frame.to_csv(index=False, float_format="%.2f")
+
+
 def region_key(params: ModelParams | dict | None = None, *,
                region: str = DEFAULT_REGION, years: list[int] | None = None) -> str:
     """The cache key an identical request would be stored under."""
@@ -316,7 +442,7 @@ def cached_region(key: str) -> dict | None:
     return _cache_read(key)
 
 
-def region(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
+def region_run(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
            years: list[int] | None = None, block: tuple[int, int] | None = None,
            use_cache: bool = True) -> dict:
     """Every cell in a region, packed small enough to send to a browser.
@@ -376,6 +502,11 @@ def region(params: ModelParams | dict | None = None, *, region: str = DEFAULT_RE
     if block is None:
         _cache_write(key, payload)
     return payload
+
+
+# The name callers have always used. region_run() carries the implementation so
+# that download() can call it without shadowing its own `region` argument.
+region = region_run
 
 
 # Approving a job spends hours of somebody's fetch quota, so it is gated on a
@@ -463,6 +594,48 @@ def _job_summary(job) -> dict:
             "parameters": job.parameters, "requested_by": job.requested_by,
             "requested_at": job.requested_at, "note": job.note,
             "command": " ".join(command(job))}
+
+
+# Nominatim is free and adequate at this traffic, but its policy asks for a real
+# User-Agent and no hammering -- so it is called from here, where the header can
+# be set and answers cached, rather than from every visitor's browser.
+GEOCODER = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "AppleBee/1.0 (Penn State; wild bee forecasts; +https://github.com/eai6/AppleBee)"
+
+
+@lru_cache(maxsize=512)
+def geocode(query: str, limit: int = 5) -> tuple:
+    """Turn what somebody typed into places, nearest-match first.
+
+    Cached, because a grower searching their own town searches it repeatedly and
+    the answer does not change.
+    """
+    import json as _json
+    import urllib.parse
+    import urllib.request
+
+    query = (query or "").strip()
+    if len(query) < 2:
+        return ()
+    url = f"{GEOCODER}?" + urllib.parse.urlencode({
+        "q": query, "format": "jsonv2", "limit": limit,
+        "countrycodes": "us", "addressdetails": 0,
+    })
+    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=8) as response:
+            found = _json.loads(response.read())
+    except Exception:                      # noqa: BLE001 -- absent, not fatal
+        return ()
+    return tuple({
+        "name": place.get("display_name", "").split(", United States")[0],
+        "lat": float(place["lat"]), "lon": float(place["lon"]),
+    } for place in found)
+
+
+def places(query: str) -> dict:
+    """The search endpoint: matches, and nothing else."""
+    return {"query": query, "places": list(geocode(query))}
 
 
 def provenance() -> dict:
