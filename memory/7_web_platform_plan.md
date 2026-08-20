@@ -441,13 +441,26 @@ admin token.
 
 Two failures on the first CI run, both worth remembering:
 
-- **The deploy could not assume its role.** A workflow job that declares
-  `environment:` gets an OIDC subject of `repo:owner/name:environment:production`
-  rather than the branch form, so a trust policy written for the branch never
-  matches. The error — "Not authorized to perform sts:AssumeRoleWithWebIdentity"
-  — names neither the claim nor the value that missed. The trust now accepts
-  both subjects, and the bootstrap checks that a pre-existing provider actually
-  carries the `sts.amazonaws.com` audience rather than assuming it.
+- **The deploy could not assume its role, twice, for two different reasons.**
+  First, a job that declares `environment:` gets an environment subject rather
+  than a branch one. Fixing that was not enough, and the second reason is worth
+  knowing:
+
+      sub: repo:eai6@32150686/AppleBee@1309429778:environment:production
+
+  **GitHub now issues an immutable subject** carrying the numeric owner and
+  repository IDs, so that renaming a repository cannot inherit another one's
+  trust. Every tutorial — and every example in the AWS and GitHub docs I read —
+  still shows `repo:owner/name:...`. A policy written that way is rejected with
+  "Not authorized to perform sts:AssumeRoleWithWebIdentity", which names neither
+  the claim nor the value that missed, so it is indistinguishable from a wrong
+  ARN, a missing audience, or a bad permission.
+
+  What found it was a throwaway workflow step printing `sub`, `aud` and
+  `repository` from the token — never the token itself. Three failed runs of
+  guessing, one run of looking. The bootstrap now reads the ids from the GitHub
+  API and trusts both forms, and also checks that a pre-existing OIDC provider
+  really carries the `sts.amazonaws.com` audience rather than assuming it.
 - **The tests could not import the package.** `python -m pytest` adds the working
   directory to `sys.path`; bare `pytest`, which is what CI runs, does not. The
   suite had passed locally for months on an invocation difference. A root
