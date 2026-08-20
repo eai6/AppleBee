@@ -6,3 +6,8 @@ pandas==3.0.3
 pyarrow==25.0.0
 scipy==1.18.0
 statsmodels==0.14.6
+# Not for the API's own answers: planning an extension job calls
+# prism.estimate(), which lives in the acquisition module, and importing that
+# reaches requests. Half a megabyte to be able to say "5,114 files, 6.4 hours"
+# before an administrator approves anything.
+requests==2.34.2
