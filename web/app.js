@@ -198,7 +198,6 @@ function show(answer, name) {
     <div>
       <div class="actions">
         <button id="export">Export this report</button>
-        <button class="ghost" id="export-csv">Copy figures</button>
       </div>
     </div>
     <div>
@@ -214,14 +213,7 @@ function show(answer, name) {
     </div>`;
 
   $("export").onclick = () => report(now);
-  $("export-csv").onclick = function () {
-    const head = ["spring", "offspring_per_female", "eggs_per_female", "emergence_date",
-                  "days_lost_to_cold", "days_lost_to_rain", "forage_index"];
-    const rows = [head, ...springs.map(s => head.map(k => s[k]))];
-    navigator.clipboard?.writeText(rows.map(r => r.join(",")).join("\n"));
-    this.textContent = "Copied";
-    setTimeout(() => { this.textContent = "Copy figures"; }, 1400);
-  };
+
 }
 
 /* ---- the report ------------------------------------------------------ */
