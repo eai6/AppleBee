@@ -38,22 +38,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      # Temporary: "Not authorized to perform sts:AssumeRoleWithWebIdentity"
-      # names neither the claim nor the value that failed to match, so print the
-      # identifying claims. Only sub/aud/repository — never the token itself.
-      - name: Show the OIDC claims this job gets
-        run: |
-          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
-          python3 - "$token" <<'PY'
-          import base64, json, sys
-          payload = sys.argv[1].split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload))
-          for key in ("sub", "aud", "repository", "ref", "environment"):
-              print(f"{key}: {claims.get(key)!r}")
-          PY
-
       - name: Assume the deploy role
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -65,6 +49,26 @@ jobs:
       # deploy does not reinstall 382 MB of scientific Python every time.
       - uses: docker/setup-buildx-action@v3
 
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      # --provenance=false --sbom=false are not optional. Buildx attaches both
+      # by default, which turns a single-platform build into a manifest list,
+      # and Lambda rejects a manifest list with "Source image is not valid".
+      - name: Build and push the image
+        id: image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          uri="$REGISTRY/applebee-api:${{ github.sha }}"
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=false --sbom=false \
+            --cache-from "type=registry,ref=$REGISTRY/applebee-api:cache" \
+            --cache-to "type=registry,ref=$REGISTRY/applebee-api:cache,mode=max,image-manifest=true,oci-mediatypes=true" \
+            -f deploy/Dockerfile -t "$uri" --push .
+          echo "uri=$uri" >> "$GITHUB_OUTPUT"
+
       - name: Install Pulumi's dependencies
         working-directory: infra
         run: |
@@ -73,6 +77,7 @@ jobs:
           ./venv/bin/pip install -r requirements.txt
 
       - uses: pulumi/actions@v6
+        id: pulumi
         with:
           command: up
           stack-name: production
@@ -82,3 +87,9 @@ jobs:
         env:
           PULUMI_CONFIG_PASSPHRASE: ${{ secrets.PULUMI_CONFIG_PASSPHRASE }}
           APPLEBEE_ADMIN_TOKEN: ${{ secrets.APPLEBEE_ADMIN_TOKEN }}
+          APPLEBEE_IMAGE_URI: ${{ steps.image.outputs.uri }}
+
+      - name: Where it is
+        run: |
+          echo "### AppleBee deployed" >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.pulumi.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"

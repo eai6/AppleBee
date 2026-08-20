@@ -24,7 +24,6 @@ import os
 
 import pulumi
 import pulumi_aws as aws
-import pulumi_docker_build as docker_build
 
 config = pulumi.Config()
 name = config.get("name") or "applebee"
@@ -76,53 +75,25 @@ aws.s3.BucketLifecycleConfigurationV2(
 )
 
 # ---------------------------------------------------------------------------
-# The image
+# The image, built outside this program
 # ---------------------------------------------------------------------------
 
-repository = aws.ecr.Repository(
-    "api",
-    name=f"{name}-api",
-    force_delete=True,
-    image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
-        scan_on_push=True),
-)
-
-# Untagged layers from previous deploys are pure cost after the next one lands.
-aws.ecr.LifecyclePolicy(
-    "api-retention",
-    repository=repository.name,
-    policy=json.dumps({"rules": [{
-        "rulePriority": 1,
-        "description": "keep the last 5 images",
-        "selection": {"tagStatus": "any", "countType": "imageCountMoreThan",
-                      "countNumber": 5},
-        "action": {"type": "expire"},
-    }]}),
-)
-
-auth = aws.ecr.get_authorization_token_output(registry_id=repository.registry_id)
-
-image = docker_build.Image(
-    "api-image",
-    context=docker_build.BuildContextArgs(location="../"),
-    dockerfile=docker_build.DockerfileArgs(location="../deploy/Dockerfile"),
-    platforms=[docker_build.Platform.LINUX_AMD64],
-    tags=[repository.repository_url.apply(lambda url: f"{url}:latest")],
-    push=True,
-    # Layers are cached in the registry, so CI does not reinstall 382 MB of
-    # scientific Python on every push.
-    cache_from=[docker_build.CacheFromArgs(
-        registry=docker_build.CacheFromRegistryArgs(
-            ref=repository.repository_url.apply(lambda url: f"{url}:cache")))],
-    cache_to=[docker_build.CacheToArgs(
-        registry=docker_build.CacheToRegistryArgs(
-            image_manifest=True, oci_media_types=True,
-            ref=repository.repository_url.apply(lambda url: f"{url}:cache")))],
-    registries=[docker_build.RegistryArgs(
-        address=repository.repository_url,
-        username=auth.user_name,
-        password=pulumi.Output.secret(auth.password))],
-)
+# Lambda rejects a manifest *list*, and buildx attaches provenance and SBOM
+# attestations by default, which turn a single-platform build into exactly that:
+#
+#   InvalidParameterValueException: Source image ... is not valid
+#
+# pulumi-docker-build exposes no way to turn those off, so the image is built by
+# buildx in CI with --provenance=false --sbom=false and this program is handed
+# the result. The registry itself is a prerequisite, created by
+# scripts/bootstrap_aws.py alongside the state bucket, because the image has to
+# exist before the stack can refer to it.
+image_uri = config.get("imageUri") or os.environ.get("APPLEBEE_IMAGE_URI")
+if not image_uri:
+    raise Exception(
+        "no image: set APPLEBEE_IMAGE_URI, or pulumi config set imageUri. "
+        "The deploy workflow builds and pushes it before running Pulumi."
+    )
 
 # ---------------------------------------------------------------------------
 # The function
@@ -168,7 +139,7 @@ function = aws.lambda_.Function(
     "api",
     name=f"{name}-api",
     package_type="Image",
-    image_uri=image.ref,
+    image_uri=image_uri,
     role=role.arn,
     memory_size=memory_mb,
     timeout=timeout_seconds,
@@ -194,4 +165,4 @@ url = aws.lambda_.FunctionUrl(
 pulumi.export("url", url.function_url)
 pulumi.export("data_bucket", data.bucket)
 pulumi.export("cache_bucket", cache.bucket)
-pulumi.export("image", image.ref)
+pulumi.export("image", image_uri)

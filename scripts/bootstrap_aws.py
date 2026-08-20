@@ -108,7 +108,8 @@ def main() -> None:
     for subject in subjects:
         print(f"trusts       : {subject}")
     print(f"role         : {role_name}")
-    print(f"state bucket : {state_bucket}\n")
+    print(f"state bucket : {state_bucket}")
+    print(f"registry     : {args.name}-api\n")
     if args.dry_run:
         print("dry run: nothing created.")
         return
@@ -194,6 +195,27 @@ def main() -> None:
             "BlockPublicAcls=true,IgnorePublicAcls=true,"
             "BlockPublicPolicy=true,RestrictPublicBuckets=true")
         print("  state bucket created")
+
+    # 4. The container registry. A prerequisite rather than part of the stack:
+    #    CI builds and pushes the image before Pulumi runs, because Lambda needs
+    #    an image without buildx's default attestations and the stack cannot
+    #    produce one.
+    repository = f"{args.name}-api"
+    if exists(args.profile, "ecr", "describe-repositories",
+              "--repository-names", repository):
+        print("  ECR repository already present")
+    else:
+        aws(args.profile, "ecr", "create-repository", "--repository-name", repository,
+            "--image-scanning-configuration", "scanOnPush=true")
+        print("  ECR repository created")
+    aws(args.profile, "ecr", "put-lifecycle-policy", "--repository-name", repository,
+        "--lifecycle-policy-text", json.dumps({"rules": [{
+            "rulePriority": 1,
+            "description": "keep the last 5 images",
+            "selection": {"tagStatus": "any", "countType": "imageCountMoreThan",
+                          "countNumber": 5},
+            "action": {"type": "expire"},
+        }]}))
 
     print("\nDone. Set these as GitHub repository secrets:\n")
     print(f"  AWS_DEPLOY_ROLE_ARN   arn:aws:iam::{account}:role/{role_name}")
