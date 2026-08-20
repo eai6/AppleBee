@@ -17,6 +17,15 @@ COPY applebee/ ./applebee/
 COPY web/ ./web/
 COPY deploy/regions.aws.json ./regions.aws.json
 
+# The two evaluations read four files directly rather than through the region
+# registry: the New York orchard observations, that region's weather and forage
+# index, and the Pennsylvania monitoring counts. 2.8 MB, tracked in git, and
+# needed on every /api/evaluate — so they travel in the image. Everything large
+# stays in S3 and is read in byte ranges.
+COPY data/inputs/observations/ ./data/inputs/observations/
+COPY data/inputs/weather/new_york/ ./data/inputs/weather/new_york/
+COPY data/inputs/forage/ny_forage_spring_2015_sites.csv ./data/inputs/forage/
+
 ENV PYTHONUNBUFFERED=1 APPLEBEE_REGIONS=/srv/regions.aws.json
 EXPOSE 8000
 

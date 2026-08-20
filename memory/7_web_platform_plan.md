@@ -388,7 +388,19 @@ Tests: `tests/test_jobs.py`, 18 new. Suite 97 → 115.
 job, the S3 result cache in place of the local directory, and the deployment
 itself. Everything above runs and is tested on a laptop.
 
-### Deployment — written 2026-08-20, not yet applied
+### Deployment — applied 2026-08-20
+
+**It runs on App Runner**, not Lambda, and not the EC2 instance that was briefly
+committed in between. The route there is the whole story of this deployment and
+is recorded below under "what went wrong", because none of it was visible from
+the design.
+
+Cost, settled: about **$5/month** — App Runner bills idle memory at
+$0.007/GB-hour and vCPU only while a request is in flight — plus $0.10 of S3.
+That is against $0.50 for the Lambda shape that this account forbids, and $8.50
+for EC2 behind CloudFront, which also brought an operating system to patch.
+
+### Deployment — as designed, superseded
 
 Deployed by GitHub Actions with Pulumi in Python, into the **ecomorph** account.
 Authentication is OIDC: GitHub mints a short-lived token, AWS trusts it only
