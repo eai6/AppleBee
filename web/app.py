@@ -32,6 +32,7 @@ import argparse
 import base64
 import json
 import sys
+import threading
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -81,12 +82,7 @@ def route(method: str, path: str, query: dict, body: dict | None,
     if path == "/api/evaluate" and method in ("GET", "POST"):
         return 200, api.evaluate(body.get("parameters"))
     if path == "/api/region" and method in ("GET", "POST"):
-        block = body.get("block")
-        return 200, api.region(body.get("parameters"),
-                               region=body.get("region", query.get("region",
-                                                                   api.DEFAULT_REGION)),
-                               years=body.get("years"),
-                               block=tuple(block) if block else None)
+        return _region(body, query)
     if path == "/api/point" and method in ("GET", "POST"):
         lat = _number(body.get("lat", query.get("lat")), "lat")
         lon = _number(body.get("lon", query.get("lon")), "lon")
@@ -95,6 +91,50 @@ def route(method: str, path: str, query: dict, body: dict | None,
         return 200, api.point(lat, lon, body.get("parameters"),
                               region=region, years=years)
     raise HttpError(404, f"no route for {method} {path}")
+
+
+# A region run is 268,536 cell-years and takes rather longer than any HTTP
+# request should, so it is never done inside one: a miss starts the work and
+# says so, and the caller asks again. The answer lands in the shared cache, so
+# whoever asks next gets it whether or not they were the one who started it.
+_running: set[str] = set()
+_running_lock = threading.Lock()
+
+
+def _region(body: dict, query: dict) -> tuple[int, dict]:
+    settings = {"region": body.get("region", query.get("region", api.DEFAULT_REGION)),
+                "years": body.get("years")}
+    parameters = body.get("parameters")
+
+    block = body.get("block")
+    if block:                       # a worker's slice: small, and answered inline
+        return 200, api.region(parameters, block=tuple(block), **settings)
+
+    key = api.region_key(parameters, **settings)
+    ready = api.cached_region(key)
+    if ready is not None:
+        return 200, ready
+
+    with _running_lock:
+        already = key in _running
+        _running.add(key)
+    if not already:
+        threading.Thread(target=_compute, args=(key, parameters, settings),
+                         daemon=True).start()
+    return 202, {"status": "running", "key": key, "retry_after_seconds": 20,
+                 "note": ("Running 268,536 cell-years under these parameters. "
+                          "Ask again in a moment; the answer is kept, so this "
+                          "happens once per parameter set.")}
+
+
+def _compute(key: str, parameters, settings: dict) -> None:
+    try:
+        api.region(parameters, **settings)
+    except Exception:               # noqa: BLE001 -- logged; the caller retries
+        traceback.print_exc()
+    finally:
+        with _running_lock:
+            _running.discard(key)
 
 
 def _admin_token(body: dict, headers: dict) -> str | None:

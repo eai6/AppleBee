@@ -154,8 +154,22 @@ async function call(path, body) {
                           body: JSON.stringify(body)} : {};
   const response = await fetch(path, options);
   const payload = await response.json();
+  if (response.status === 202) return {pending: payload};
   if (!response.ok) throw new Error(payload.error || response.statusText);
   return payload;
+}
+
+/* A region run is 268,536 cell-years and is done in the background, so the
+   first request for a given parameter set answers "running" and this asks
+   again. Every later visitor with the same parameters gets it at once. */
+async function callUntilReady(path, body, onWait) {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const answer = await call(path, body);
+    if (!answer.pending) return answer;
+    onWait(answer.pending, attempt);
+    await new Promise((done) => setTimeout(done, 15000));
+  }
+  throw new Error("The region run is taking longer than expected. Try again shortly.");
 }
 
 /* Only the parameters that differ are sent, so a request says what it changes
@@ -385,7 +399,11 @@ $("run-point").onclick = () => withButton("run-point", async () =>
 
 $("run-region").onclick = () => withButton("run-region", async () => {
   $("map-status").textContent = "Running…";
-  renderRegion(await call("/api/region", {parameters: changedParameters()}));
+  renderRegion(await callUntilReady("/api/region", {parameters: changedParameters()},
+    (pending, attempt) => {
+      $("map-status").textContent =
+        `${pending.note} (${(attempt + 1) * 15}s)`;
+    }));
 });
 
 $("run-eval").onclick = () => withButton("run-eval", async () =>

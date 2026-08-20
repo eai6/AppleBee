@@ -247,3 +247,25 @@ def test_the_cache_key_follows_the_parameters():
                               ModelParams().with_(longevity=30), None)
     other_years = api._region_key("northeast", [2014], ModelParams(), None)
     assert len({default, changed, other_years}) == 3
+
+
+def test_a_region_run_is_started_rather_than_waited_for(tmp_path, monkeypatch):
+    # 268,536 cell-years takes longer than any HTTP request should, so a miss
+    # starts the work and says so instead of holding the connection open until
+    # the platform's own gateway gives up on it.
+    monkeypatch.setattr(api, "REGION_CACHE", tmp_path)
+    started = []
+    monkeypatch.setattr("web.app.threading.Thread",
+                        lambda **kw: type("T", (), {"start": lambda s: started.append(kw)})())
+    status, payload = answer("POST", "/api/region", {}, {"parameters": {"longevity": 29}})
+    assert status == 202
+    assert payload["status"] == "running" and payload["retry_after_seconds"] > 0
+    assert len(started) == 1
+
+
+def test_a_finished_region_run_is_returned_at_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(api, "REGION_CACHE", tmp_path)
+    key = api.region_key({"longevity": 28})
+    api._cache_write(key, {"region": "northeast", "cells": 3})
+    status, payload = answer("POST", "/api/region", {}, {"parameters": {"longevity": 28}})
+    assert status == 200 and payload["cached"] is True

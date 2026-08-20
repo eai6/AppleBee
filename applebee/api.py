@@ -289,6 +289,19 @@ def point(lat: float, lon: float, params: ModelParams | dict | None = None, *,
     }
 
 
+def region_key(params: ModelParams | dict | None = None, *,
+               region: str = DEFAULT_REGION, years: list[int] | None = None) -> str:
+    """The cache key an identical request would be stored under."""
+    params = _as_params(params)
+    return _region_key(region, list(years) if years else _weather_years(region),
+                       params, None)
+
+
+def cached_region(key: str) -> dict | None:
+    """A finished region run, if one has been done under these parameters."""
+    return _cache_read(key)
+
+
 def region(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
            years: list[int] | None = None, block: tuple[int, int] | None = None,
            use_cache: bool = True) -> dict:
