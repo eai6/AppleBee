@@ -168,12 +168,31 @@ def main() -> None:
             "Version": "2012-10-17",
             "Statement": [{
                 "Effect": "Allow",
+                # The whole role surface for these names, rather than the
+                # subset today's stack happens to touch: each omission costs a
+                # failed deploy to discover, and the restriction that matters is
+                # the name, not the verb.
                 "Action": ["iam:CreateRole", "iam:DeleteRole", "iam:GetRole",
-                           "iam:PassRole", "iam:TagRole", "iam:ListRolePolicies",
+                           "iam:UpdateRole", "iam:UpdateRoleDescription",
+                           "iam:UpdateAssumeRolePolicy",
+                           "iam:PassRole", "iam:TagRole", "iam:UntagRole",
+                           "iam:ListRoleTags", "iam:ListRolePolicies",
+                           "iam:ListInstanceProfilesForRole",
                            "iam:AttachRolePolicy", "iam:DetachRolePolicy",
                            "iam:PutRolePolicy", "iam:DeleteRolePolicy",
                            "iam:GetRolePolicy", "iam:ListAttachedRolePolicies"],
                 "Resource": f"arn:aws:iam::{account}:role/{args.name}-*",
+            }, {
+                # An EC2 origin needs an instance profile, which PowerUserAccess
+                # also excludes, and which is a separate IAM resource type from
+                # the role it carries.
+                "Effect": "Allow",
+                "Action": ["iam:CreateInstanceProfile", "iam:DeleteInstanceProfile",
+                           "iam:GetInstanceProfile", "iam:TagInstanceProfile",
+                           "iam:UntagInstanceProfile", "iam:ListInstanceProfileTags",
+                           "iam:AddRoleToInstanceProfile",
+                           "iam:RemoveRoleFromInstanceProfile"],
+                "Resource": f"arn:aws:iam::{account}:instance-profile/{args.name}-*",
             }],
         }))
     print("  policies attached")
