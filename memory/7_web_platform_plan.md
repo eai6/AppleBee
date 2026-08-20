@@ -196,10 +196,10 @@ two audiences share a spine — both are small computations over tiny slices of
 data — so they ship together rather than in sequence.
 
 - [x] **Phase 0 - plumbing.** Done 2026-08-19; see Progress below.
-- [ ] **Phase 1 - bring the data to the present.** The ~8.5 h backfill above,
-      run once, then a daily increment. Everything grower-facing depends on it,
-      and it is the long pole in wall-clock terms, so it starts first and runs
-      unattended while Phase 2 is built.
+- [ ] **Phase 1 - bring the data to the present.** *Deferred 2026-08-19: this
+      runs later, through the admin path, once the platform exists.* The
+      platform is therefore built against 2013-2018 and is fully exercisable on
+      it — only the forecast needs data that does not exist yet.
 - [ ] **Phase 2 - the two endpoints that matter.** `/point` (a location, a year,
       offspring per female and the drivers behind it) and `/evaluate` (Objectives
       2 and 3 re-fitted under the visitor's parameters). One page, two audiences:
@@ -209,7 +209,12 @@ data — so they ship together rather than in sequence.
       plan 5's encoding, results cache keyed by parameter hash.
 - [ ] **Phase 4 - extension on request.** Queued admin-approved jobs for new years
       or a new extent, provenance and SHA-256 written on every S3 object so the
-      integrity story survives the move off disk.
+      integrity story survives the move off disk. **Its first real job is the
+      backfill deferred from Phase 1**, which makes this path load-bearing rather
+      than incidental: it must survive an 8.5 h run, so the worker is Fargate
+      (Lambda's 15-minute ceiling rules it out), job state is durable enough to
+      report and resume, and `fetch_prism.py`'s existing resumability is what it
+      leans on. Dogfooding the hardest job it will ever run is a decent test.
 - [ ] **Phase 5 - the October moment.** Scheduled run on 1 October, a forecast
       page that states its uncertainty, and optionally accounts so a grower is
       told rather than having to check.
@@ -220,6 +225,8 @@ data — so they ship together rather than in sequence.
   platform until the model is tested outside the region it was evaluated in.
 - **Extension is admin-run**; users request it. Protects the PRISM fetch.
 - **Growers are the goal**, reviewers are served by the same spine.
+- **The backfill waits** and runs through the admin path once that exists, so
+  the platform is built and shipped against the data already on disk.
 - **Public and rate-limited in-Lambda**, no WAF, no login at launch.
 
 ## Open questions
