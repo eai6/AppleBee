@@ -162,6 +162,17 @@ url = aws.lambda_.FunctionUrl(
         allow_headers=["content-type", "x-admin-token"], max_age=86400),
 )
 
+# authorization_type="NONE" only says the URL does not check IAM. The function
+# still refuses everyone until its resource policy allows the invoke, which is
+# why a freshly created URL answers 403 to its own owner.
+aws.lambda_.Permission(
+    "api-public",
+    action="lambda:InvokeFunctionUrl",
+    function=function.name,
+    principal="*",
+    function_url_auth_type="NONE",
+)
+
 pulumi.export("url", url.function_url)
 pulumi.export("data_bucket", data.bucket)
 pulumi.export("cache_bucket", cache.bucket)

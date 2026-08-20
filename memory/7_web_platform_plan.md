@@ -461,6 +461,18 @@ Two failures on the first CI run, both worth remembering:
   guessing, one run of looking. The bootstrap now reads the ids from the GitHub
   API and trusts both forms, and also checks that a pre-existing OIDC provider
   really carries the `sts.amazonaws.com` audience rather than assuming it.
+- **Lambda rejected the image it had just been given.** `InvalidParameterValueException:
+  Source image ... is not valid`, on an image that pushed cleanly. Buildx attaches
+  provenance and SBOM attestations by default, which turns a single-platform build
+  into a *manifest list*, and Lambda accepts only a single manifest.
+  `pulumi-docker-build` exposes no way to turn them off, so the build moved out
+  of the stack into a buildx step with `--provenance=false --sbom=false`, and
+  Pulumi is handed the URI. That makes the registry a prerequisite — the image
+  must exist before the stack can name it — so the bootstrap creates it too.
+- **Two smaller ones in the same apply.** S3 rejects a tag value containing a
+  comma. And Pulumi's auto-naming produced `api-role-14e86ff`, outside the
+  `applebee-*` names the deploy role may create — fixed by naming the role
+  explicitly rather than by widening the policy to fit the generated name.
 - **The tests could not import the package.** `python -m pytest` adds the working
   directory to `sys.path`; bare `pytest`, which is what CI runs, does not. The
   suite had passed locally for months on an invocation difference. A root
