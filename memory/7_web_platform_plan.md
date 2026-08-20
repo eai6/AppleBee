@@ -433,8 +433,25 @@ workflows parse. **Not verified:** the image build, which failed on this machine
 for lack of disk — the volume is at 99%, 6.8 GB free — and the stack itself,
 which has never been applied. The first CI run is the real test of both.
 
-**Blocked on:** `aws login --profile ecomorph`. Everything after that is
-scripted.
+**Bootstrapped 2026-08-20** into account 495331821764 (`ecomorph`, us-east-1).
+The OIDC provider already existed from earlier work and was reused; the deploy
+role and the state bucket `applebee-pulumi-state-821764` were created. Four
+GitHub secrets set: the role ARN, the state bucket, a Pulumi passphrase, and the
+admin token.
+
+Two failures on the first CI run, both worth remembering:
+
+- **The deploy could not assume its role.** A workflow job that declares
+  `environment:` gets an OIDC subject of `repo:owner/name:environment:production`
+  rather than the branch form, so a trust policy written for the branch never
+  matches. The error — "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+  — names neither the claim nor the value that missed. The trust now accepts
+  both subjects, and the bootstrap checks that a pre-existing provider actually
+  carries the `sts.amazonaws.com` audience rather than assuming it.
+- **The tests could not import the package.** `python -m pytest` adds the working
+  directory to `sys.path`; bare `pytest`, which is what CI runs, does not. The
+  suite had passed locally for months on an invocation difference. A root
+  `conftest.py` fixes both.
 
 ## Risks
 

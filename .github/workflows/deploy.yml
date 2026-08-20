@@ -38,6 +38,22 @@ jobs:
         with:
           python-version: "3.12"
 
+      # Temporary: "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+      # names neither the claim nor the value that failed to match, so print the
+      # identifying claims. Only sub/aud/repository — never the token itself.
+      - name: Show the OIDC claims this job gets
+        run: |
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          python3 - "$token" <<'PY'
+          import base64, json, sys
+          payload = sys.argv[1].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          for key in ("sub", "aud", "repository", "ref", "environment"):
+              print(f"{key}: {claims.get(key)!r}")
+          PY
+
       - name: Assume the deploy role
         uses: aws-actions/configure-aws-credentials@v4
         with:
