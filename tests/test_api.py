@@ -360,3 +360,15 @@ def test_the_region_is_a_set_of_states_not_a_bounding_box():
     # A bounding box would reach to -83.0 and 36.5 exactly, with straight edges.
     assert cells["lon"].min() > -83.0
     assert cells["lat"].min() > 36.5
+
+
+def test_redefining_a_region_invalidates_its_stored_runs(monkeypatch):
+    # Changing which cells belong to a region changes neither the years nor the
+    # parameters, so without the cell count in the key the old answer would go
+    # on being served under the same name.
+    from applebee.config import ModelParams
+
+    before = api._region_key("northeast", [2013], ModelParams(), None)
+    cells = api._runnable_cells("northeast")
+    monkeypatch.setattr(api, "_runnable_cells", lambda name: cells.iloc[:100])
+    assert api._region_key("northeast", [2013], ModelParams(), None) != before

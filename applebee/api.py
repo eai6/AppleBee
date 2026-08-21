@@ -721,9 +721,17 @@ def _grid_step(lats: np.ndarray) -> float:
 
 def _region_key(region: str, years: list[int], params: ModelParams,
                 block: tuple[int, int] | None) -> str:
+    """What a stored run is filed under.
+
+    The cell count is part of the key. Without it, redefining a region -- which
+    changes which cells are in it but not the years or the parameters -- leaves
+    the old answer under the same name, and the map keeps serving ground that is
+    no longer in the region. That happened once.
+    """
     digest = hashlib.sha256(json.dumps(
         {"region": region, "years": years, "parameters": params.to_dict(),
-         "block": block}, sort_keys=True).encode()).hexdigest()
+         "block": block, "cells": len(_runnable_cells(region))},
+        sort_keys=True).encode()).hexdigest()
     return f"{region}-{digest[:16]}"
 
 
