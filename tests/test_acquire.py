@@ -251,3 +251,30 @@ def test_resume_requires_a_fully_written_column(tmp_path):
     existing = np.load(path, mmap_mode="r")
     complete = np.array([bool(np.isfinite(existing[:, j]).all()) for j in range(len(days))])
     assert complete.tolist() == [True, False, False]
+
+
+def test_a_resumed_fetch_recognises_the_days_it_already_holds(tmp_path, monkeypatch):
+    """Over half the grid is NaN on every day, so completeness cannot mean
+    "every cell finite" -- that made a resumed run re-fetch all of it."""
+    import numpy as np
+    import pandas as pd
+
+    from applebee.acquire import prism
+
+    days = pd.date_range("2015-01-01", periods=4, freq="D")
+    cells = pd.DataFrame({"col": [1, 2, 3, 4], "row": [1, 1, 1, 1],
+                          "lon": [-77.0, -76.9, -76.8, -76.7],
+                          "lat": [42.0, 42.0, 42.0, 42.0]})
+    values = np.full((4, 4), np.nan, dtype="float32")
+    values[:2, :3] = 10.0          # two land cells, three days written
+    values[:1, 3] = 10.0           # the fourth day only half written
+    np.save(tmp_path / "t.values.npy", values)
+
+    held = []
+    monkeypatch.setattr(prism, "already_have", lambda *a, **k: (held.append(a), False)[1])
+    monkeypatch.setattr(prism, "fetch_with_retry", lambda *a, **k: (False, "test"))
+    prism.fetch_and_sample(tmp_path, "t", cells, "tmean", "2015-01-01", "2015-01-04",
+                           cache_dir=tmp_path, progress=False)
+
+    asked = {a[2].strftime("%Y-%m-%d") for a in held}
+    assert asked == {"2015-01-04"}, f"should only re-fetch the half-written day, asked {asked}"

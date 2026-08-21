@@ -467,15 +467,28 @@ def fetch_and_sample(
         try:
             existing = np.lib.format.open_memmap(values_path, mode="r")
             if existing.shape == shape:
-                # A day counts as written only if EVERY cell in its column is
-                # finite. Sampling a couple of rows is not enough: an interrupted
-                # run can leave a column half written -- the north populated and
-                # the south still NaN -- and a two-row check declares that day
-                # complete, silently baking a horizontal band of missing data
-                # into the cache. That happened once; hence the full scan.
-                resume = np.zeros(len(days), dtype=bool)
+                # A day counts as written when every cell that *can* carry data
+                # does. Two mistakes are possible here and both have been made:
+                #
+                #   Sampling a couple of rows is not enough -- an interrupted run
+                #   leaves a column half written, the north populated and the
+                #   south still NaN, and a two-row check calls that day complete,
+                #   baking a band of missing data into the cache.
+                #
+                #   Requiring *every* cell to be finite is not right either. Over
+                #   half this grid is ocean, Canada, or outside PRISM's land mask
+                #   and is NaN on every day of a perfectly complete matrix, so no
+                #   day ever qualifies and a resumed run re-fetches everything it
+                #   already holds -- twelve hours of PRISM's pacing for nothing,
+                #   and a real risk of being rate-limited for it.
+                #
+                # So completeness is judged against the fullest day present,
+                # which is the land mask as this matrix knows it.
+                filled = np.zeros(len(days), dtype=int)
                 for j in range(len(days)):
-                    resume[j] = bool(np.isfinite(existing[:, j]).all())
+                    filled[j] = int(np.isfinite(existing[:, j]).sum())
+                land = int(filled.max())
+                resume = (filled >= land * 0.999) & (land > 0)
                 del existing
                 values = np.lib.format.open_memmap(values_path, mode="r+")
                 print(f"  resuming: {int(resume.sum()):,} of {len(days):,} days already written",
