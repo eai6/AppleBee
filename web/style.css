@@ -98,10 +98,20 @@
   button.ghost[aria-pressed="true"] { background:var(--accent-soft); border-color:var(--accent);
                                       color:var(--accent); }
   :focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-  .modes { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:5px; }
+  .modes { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:5px; }
   .modes button { padding:8px 4px; font-size:12.5px; min-width:0;
                   overflow:hidden; text-overflow:ellipsis; }
-  .drawbar { margin-top:10px; }
+  .drawbar, .statebar { margin-top:10px; }
+  .statebtns { display:flex; gap:6px; margin-bottom:8px; }
+  .statebtns button { flex:1; padding:6px 6px; font-size:12px; }
+  .statelist { display:grid; gap:2px; max-height:220px; overflow-y:auto;
+               border:1px solid var(--line); border-radius:8px; padding:5px; }
+  .statelist label { display:flex; align-items:center; gap:7px; font-size:12.5px;
+                     padding:4px 6px; border-radius:6px; cursor:pointer; color:var(--ink); }
+  .statelist label:hover { background:var(--accent-soft); }
+  .statelist input { accent-color:var(--accent); flex:none; margin:0; }
+  .statelist small { margin-left:auto; color:var(--ink-3); font-size:11px;
+                     font-variant-numeric:tabular-nums; }
   .drawbar p { margin:0 0 8px; }
   .drawbtns { display:flex; gap:6px; }
   .drawbtns button { flex:1; padding:7px 6px; font-size:12.5px; }

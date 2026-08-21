@@ -372,3 +372,35 @@ def test_redefining_a_region_invalidates_its_stored_runs(monkeypatch):
     cells = api._runnable_cells("northeast")
     monkeypatch.setattr(api, "_runnable_cells", lambda name: cells.iloc[:100])
     assert api._region_key("northeast", [2013], ModelParams(), None) != before
+
+
+@needs_northeast
+def test_the_region_lists_its_states_with_their_sizes():
+    answer = api.states()
+    names = {s["name"] for s in answer["states"]}
+    assert "New York" in names and "Vermont" in names
+    assert "Ohio" not in names and "Virginia" not in names   # not in this region
+    assert sum(s["cells"] for s in answer["states"]) == answer["cells"]
+
+
+@needs_northeast
+def test_whole_states_can_be_asked_for_by_name():
+    one = api.area(chosen_states=["Vermont"])
+    two = api.area(chosen_states=["Vermont", "New Hampshire"])
+    assert one["location"]["description"] == "Vermont"
+    assert two["location"]["cells"] > one["location"]["cells"]
+    assert two["location"]["description"] == "2 states"
+
+
+@needs_northeast
+def test_a_state_outside_the_region_is_refused_with_the_alternatives():
+    with pytest.raises(ValueError, match="no such state in this region"):
+        api.area(chosen_states=["Ohio"])
+
+
+@needs_northeast
+def test_a_whole_state_may_exceed_the_drawn_area_ceiling():
+    # The ceiling exists to stop someone dragging a shape across the region; a
+    # named state is a deliberate request and is allowed to be large.
+    answer = api.area(chosen_states=["New York"])
+    assert answer["location"]["cells"] > api.MAX_AREA_CELLS

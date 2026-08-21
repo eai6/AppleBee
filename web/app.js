@@ -56,8 +56,9 @@ window.__map = map;
 const linePane = map.createPane("state-pane");
 linePane.style.zIndex = 460;
 linePane.style.pointerEvents = "none";
-fetch("/states.geojson").then(r => r.json()).then(states => {
-  L.geoJSON(states, {
+fetch("/states.geojson").then(r => r.json()).then(outlines => {
+  state.outlines = outlines;
+  L.geoJSON(outlines, {
     pane: "state-pane",
     style: {color: "#3d4a45", weight: 1.1, opacity: .7, fill: false,
             interactive: false},
@@ -142,8 +143,9 @@ requestAnimationFrame(() => { map.invalidateSize(); drawGrid(); });
 /* ---- selection overlays ---------------------------------------------- */
 let marker = null, ring = null, sketch = null;
 function clearOverlays() {
-  for (const layer of [marker, ring, sketch]) if (layer) map.removeLayer(layer);
-  marker = ring = sketch = null;
+  for (const layer of [marker, ring, sketch, chosenOutline])
+    if (layer) map.removeLayer(layer);
+  marker = ring = sketch = chosenOutline = null;
 }
 function drawSketch() {
   if (sketch) map.removeLayer(sketch);
@@ -484,13 +486,14 @@ document.addEventListener("click", e => {
 });
 
 /* ---- modes ----------------------------------------------------------- */
-const MODES = {cell: "m-cell", area: "m-area", poly: "m-poly"};
+const MODES = {cell: "m-cell", area: "m-area", poly: "m-poly", state: "m-state"};
 function setMode(next) {
   state.mode = next;
   for (const [key, id] of Object.entries(MODES))
     $(id).setAttribute("aria-pressed", String(key === next));
   $("radius-row").hidden = next !== "area";
   $("draw-row").hidden = next !== "poly";
+  $("state-row").hidden = next !== "state";
   if (next !== "poly") { state.polygon = []; drawSketch(); }
 }
 for (const [key, id] of Object.entries(MODES)) $(id).onclick = () => setMode(key);
@@ -542,6 +545,54 @@ $("download").onclick = async function () {
     $("download-hint").textContent = error.message;
   } finally { this.disabled = false; this.textContent = was; }
 };
+
+/* ---- whole states ---------------------------------------------------- */
+async function loadStates() {
+  const answer = await api("/api/states");
+  if (!answer.states.length) { $("m-state").hidden = true; return; }
+  $("state-list").innerHTML = answer.states.map(s => `
+    <label><input type="checkbox" value="${s.name}">
+      ${s.name}<small>${s.cells.toLocaleString()}</small></label>`).join("");
+  $("state-list").addEventListener("change", askStates);
+  $("state-all").onclick = () => { setAllStates(true); askStates(); };
+  $("state-none").onclick = () => { setAllStates(false); clearOverlays(); };
+}
+
+function setAllStates(on) {
+  for (const box of document.querySelectorAll("#state-list input")) box.checked = on;
+}
+
+function chosenStates() {
+  return [...document.querySelectorAll("#state-list input:checked")].map(b => b.value);
+}
+
+async function askStates() {
+  const chosen = chosenStates();
+  if (!chosen.length) return;
+  busy(chosen.length === 1 ? `Averaging ${chosen[0]}\u2026`
+                           : `Averaging ${chosen.length} states\u2026`);
+  clearOverlays();
+  highlightStates(chosen);
+  try {
+    const answer = await api("/api/area", {states: chosen, parameters: state.params});
+    show(answer, chosen.length === 1 ? chosen[0] : `${chosen.length} states`);
+  } catch (error) { failed(error); }
+}
+
+/* The chosen states are outlined on the map, so the selection is visible there
+   and not only in the list. */
+let chosenOutline = null;
+function highlightStates(names) {
+  if (chosenOutline) { map.removeLayer(chosenOutline); chosenOutline = null; }
+  if (!state.outlines) return;
+  const wanted = new Set(names);
+  chosenOutline = L.geoJSON(state.outlines, {
+    pane: "draw-pane",
+    filter: f => wanted.has(f.properties.NAME),
+    style: {color: "#1B5E4B", weight: 2.5, fillColor: "#1B5E4B", fillOpacity: .14,
+            interactive: false},
+  }).addTo(map);
+}
 
 /* ---- parameters ------------------------------------------------------ */
 const GROUPS = [
@@ -648,10 +699,15 @@ async function loadGrid() {
 }
 
 async function pollRegion() {
-  for (let attempt = 0; attempt < 40; attempt++) {
+  for (let attempt = 0; attempt < 60; attempt++) {
     const answer = await api("/api/region", {parameters: state.params});
     if (!answer.pending) return answer;
-    $("leg-year").innerHTML = '<span class="busy"></span> running';
+    // A first run under new parameters takes a minute, and the page should not
+    // look broken while it does.
+    $("leg-year").innerHTML = '<span class="busy"></span> building the map';
+    if (!$("year-row").children.length) {
+      $("year-row").innerHTML = '<span class="empty">Seasons appear when the map does.</span>';
+    }
     await new Promise(done => setTimeout(done, 5000));
   }
   throw new Error("The regional run is taking longer than expected.");
@@ -670,6 +726,7 @@ $("year-row").addEventListener("click", e => {
 
 /* ---- go -------------------------------------------------------------- */
 api("/api/parameters").then(renderParameters).catch(() => {});
+loadStates().catch(() => { $("m-state").hidden = true; });
 loadGrid().catch(error => {
   $("leg-year").textContent = "unavailable";
   $("readout").innerHTML = `<div class="empty"><b>The map could not load</b>${error.message}</div>`;

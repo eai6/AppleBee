@@ -45,11 +45,19 @@
           <button class="ghost" id="m-cell" aria-pressed="true">This spot</button>
           <button class="ghost" id="m-area" aria-pressed="false">Radius</button>
           <button class="ghost" id="m-poly" aria-pressed="false">Draw area</button>
+          <button class="ghost" id="m-state" aria-pressed="false">States</button>
         </div>
         <div class="radius" id="radius-row" hidden>
           <input id="radius" type="range" min="2" max="30" value="8" step="1"
                  aria-label="Radius in kilometres">
           <b class="mono" id="radius-out">8 km</b>
+        </div>
+        <div class="statebar" id="state-row" hidden>
+          <div class="statebtns">
+            <button class="ghost" id="state-all">All states</button>
+            <button class="ghost" id="state-none">Clear</button>
+          </div>
+          <div class="statelist" id="state-list"></div>
         </div>
         <div class="drawbar" id="draw-row" hidden>
           <p class="empty" id="draw-hint">Click the map to place corners.</p>

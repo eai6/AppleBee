@@ -17,6 +17,7 @@ Endpoints:
 ``POST /api/point``              the same, with parameters in the body
 ``GET  /api/places?q=``          addresses and towns, for the search box
 ``POST /api/area``               a radius or a drawn shape, averaged
+``GET  /api/states``             the states this region covers
 ``GET  /api/download?years=``    every cell, every chosen spring, as CSV
 ``POST /api/region``             every cell in a region, packed
 ``GET  /api/jobs``               the extension queue
@@ -98,7 +99,11 @@ def route(method: str, path: str, query: dict, body: dict | None,
                              region=body.get("region", api.DEFAULT_REGION),
                              lat=body.get("lat"), lon=body.get("lon"),
                              radius_km=body.get("radius_km"),
-                             polygon=body.get("polygon"), years=body.get("years"))
+                             polygon=body.get("polygon"),
+                             chosen_states=body.get("states"),
+                             years=body.get("years"))
+    if path == "/api/states" and method == "GET":
+        return 200, api.states(query.get("region", api.DEFAULT_REGION))
     if path == "/api/download" and method == "GET":
         years = [int(y) for y in query.get("years", "").split(",") if y.strip()]
         return 200, {"csv": api.download(region=query.get("region", api.DEFAULT_REGION),

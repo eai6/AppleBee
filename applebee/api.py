@@ -174,6 +174,28 @@ def _runnable_cells(name: str) -> pd.DataFrame:
 
 
 @lru_cache(maxsize=4)
+def _cell_states(name: str) -> pd.DataFrame | None:
+    """Which state each cell belongs to, where the region declares one."""
+    table = MEMBERSHIP.get(name)
+    if not (table and table.exists()):
+        return None
+    return pd.read_parquet(table)
+
+
+def states(region: str = DEFAULT_REGION) -> dict:
+    """The states this region covers, and how much of each it holds."""
+    table = _cell_states(region)
+    if table is None:
+        return {"region": region, "states": []}
+    runnable = _runnable_cells(region)[["col", "row"]]
+    counts = (table.merge(runnable, on=["col", "row"], how="inner")
+              .NAME.value_counts().sort_index())
+    return {"region": region,
+            "states": [{"name": name, "cells": int(n)} for name, n in counts.items()],
+            "cells": int(counts.sum())}
+
+
+@lru_cache(maxsize=4)
 def _weather_years(name: str) -> list[int]:
     """The years a region can run. Cached: deriving it re-reads every input."""
     return list(datasets.get(name).weather_years())
@@ -330,19 +352,35 @@ MAX_AREA_CELLS = 1200
 def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
          lat: float | None = None, lon: float | None = None,
          radius_km: float | None = None, polygon: list | None = None,
+         chosen_states: list | None = None,
          years: list[int] | None = None) -> dict:
     """What the model predicts across a group of cells, not just one.
 
-    Either a radius around a point, or a drawn ring of ``[lon, lat]`` corners. A
-    cell belongs to the area when its **centre** falls inside, so no cell is ever
-    counted twice by two adjacent shapes.
+    A radius around a point, a drawn ring of ``[lon, lat]`` corners, or whole
+    states by name. For a shape, a cell belongs when its **centre** falls
+    inside, so no cell is ever counted twice by two adjacent shapes.
     """
     params = _as_params(params)
     dataset, tmean, ppt, forage = _region(region)
     cells = _runnable_cells(region)
     lons, lats = cells["lon"].to_numpy(), cells["lat"].to_numpy()
 
-    if polygon:
+    if chosen_states:
+        table = _cell_states(region)
+        if table is None:
+            raise ValueError(f"the {region} region does not name its states")
+        known = set(table.NAME)
+        unknown = [s for s in chosen_states if s not in known]
+        if unknown:
+            raise ValueError(f"no such state in this region: {', '.join(unknown)}; "
+                             f"expected any of {', '.join(sorted(known))}")
+        wanted = set(zip(*table[table.NAME.isin(chosen_states)][["col", "row"]].values.T))
+        inside = np.array([(int(c), int(r)) in wanted
+                           for c, r in zip(cells["col"], cells["row"])])
+        centre = (float(cells[inside]["lat"].mean()), float(cells[inside]["lon"].mean()))
+        described = (chosen_states[0] if len(chosen_states) == 1
+                     else f"{len(chosen_states)} states")
+    elif polygon:
         ring = [(float(a), float(b)) for a, b in polygon]
         if len(ring) < 3:
             raise ValueError("a drawn area needs at least three corners")
@@ -361,7 +399,7 @@ def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGI
         raise ValueError(
             "that area does not contain the centre of any 4 km cell; draw a wider one"
         )
-    if len(chosen) > MAX_AREA_CELLS:
+    if len(chosen) > MAX_AREA_CELLS and not chosen_states:
         raise ValueError(
             f"that area covers {len(chosen):,} cells, more than the {MAX_AREA_CELLS:,} "
             "this will run at once; draw a smaller one"
