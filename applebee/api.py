@@ -34,7 +34,7 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
-from . import datasets
+from . import config, datasets
 from .config import CACHE, OUTPUTS, ModelParams
 from .model import AppleBee
 
@@ -107,6 +107,18 @@ CAVEATS = {
 
 DEFAULT_REGION = "northeast"
 
+# A region is a set of states, not a rectangle. The simulation grid was built
+# from a bounding box, which cuts Ohio, Kentucky and Virginia off mid-state and
+# reaches 250 km beyond anything anyone calls the Northeast; this table says
+# which cells actually belong. Membership is applied when cells are listed, so
+# it governs the map, an area, a download and the regional comparison alike.
+#
+# The definition is the USDA agricultural Northeast -- what Northeast SARE and
+# the Northeastern IPM Center cover. The Census Bureau's nine-state Northeast
+# would drop West Virginia, Maryland and Delaware, which are apple country and
+# are the point of the model.
+MEMBERSHIP = {"northeast": config.INPUTS / "regions" / "northeast_states.parquet"}
+
 # The grid is 4 km, so the nearest cell to a point inside the region is always
 # within a few kilometres. Beyond the first figure the answer is about somewhere
 # else and says so; beyond the second it is refused, because returning the
@@ -147,12 +159,18 @@ def _region(name: str):
 
 @lru_cache(maxsize=4)
 def _runnable_cells(name: str) -> pd.DataFrame:
-    """Cells carrying both weather and a floral index, with their coordinates."""
+    """Cells carrying weather, a floral index, and membership of the region."""
     dataset, tmean, _, forage = _region(name)
     have_forage = {cell for cell in forage.cells}
     cells = tmean.cells[["col", "row", "lon", "lat"]].copy()
     keep = [(int(c), int(r)) in have_forage for c, r in zip(cells["col"], cells["row"])]
-    return cells[keep].reset_index(drop=True)
+    cells = cells[keep].reset_index(drop=True)
+
+    table = MEMBERSHIP.get(name)
+    if table and table.exists():
+        belongs = pd.read_parquet(table, columns=["col", "row"])
+        cells = cells.merge(belongs, on=["col", "row"], how="inner").reset_index(drop=True)
+    return cells
 
 
 @lru_cache(maxsize=4)

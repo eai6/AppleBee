@@ -11,9 +11,11 @@ FROM python:3.12-slim
 
 WORKDIR /srv
 
-# unzip for the PRISM archives; the rest comes from wheels.
+# unzip for the PRISM archives, and libexpat1 because rasterio's wheel bundles
+# GDAL but still dlopens the system expat -- without it the import fails only
+# when a raster is first read, which is after the download has started.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        unzip curl ca-certificates \
+        unzip curl ca-certificates libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY deploy/requirements-worker.txt ./requirements.txt

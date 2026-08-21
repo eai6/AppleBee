@@ -59,7 +59,7 @@ linePane.style.pointerEvents = "none";
 fetch("/states.geojson").then(r => r.json()).then(states => {
   L.geoJSON(states, {
     pane: "state-pane",
-    style: {color: "#3d4a45", weight: 1, opacity: .55, fill: false,
+    style: {color: "#3d4a45", weight: 1.1, opacity: .7, fill: false,
             interactive: false},
   }).addTo(map);
 }).catch(() => {});   // a missing outline is cosmetic, not fatal

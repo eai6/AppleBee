@@ -25,6 +25,9 @@ COPY deploy/regions.aws.json ./regions.aws.json
 COPY data/inputs/observations/ ./data/inputs/observations/
 COPY data/inputs/weather/new_york/ ./data/inputs/weather/new_york/
 COPY data/inputs/forage/ny_forage_spring_2015_sites.csv ./data/inputs/forage/
+# Which grid cells belong to the region, as opposed to falling inside the
+# bounding box the grid was built from. 11 KB.
+COPY data/inputs/regions/ ./data/inputs/regions/
 
 ENV PYTHONUNBUFFERED=1 APPLEBEE_REGIONS=/srv/regions.aws.json
 EXPOSE 8000

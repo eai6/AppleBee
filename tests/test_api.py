@@ -315,7 +315,9 @@ def test_the_download_is_one_row_per_cell_and_one_column_per_spring():
     csv = api.download(years=[2018, 2019])
     header, first, *rest = csv.splitlines()
     assert header == "lon,lat,spring_2018,spring_2019"
-    assert len(rest) + 1 == 44759          # every cell, once
+    # Every cell in the region, once -- not a hardcoded count, which would just
+    # have to be edited whenever the region's definition changes.
+    assert len(rest) + 1 == len(api._runnable_cells("northeast"))
     assert len(first.split(",")) == 4
 
 
@@ -347,3 +349,14 @@ def test_an_area_reports_its_spread_not_only_its_average():
 @needs_northeast
 def test_one_cell_has_no_spread_to_report():
     assert "spread" not in api.point(42.87, -77.01)["springs"][0]
+
+
+@needs_northeast
+def test_the_region_is_a_set_of_states_not_a_bounding_box():
+    # The grid was built from a rectangle that cuts Ohio, Kentucky and Virginia
+    # off mid-state. Membership is what decides which cells are in the region.
+    cells = api._runnable_cells("northeast")
+    assert len(cells) < 44_756                     # the rectangle held this many
+    # A bounding box would reach to -83.0 and 36.5 exactly, with straight edges.
+    assert cells["lon"].min() > -83.0
+    assert cells["lat"].min() > 36.5
