@@ -25,6 +25,7 @@ this needs a network to verify.
 from __future__ import annotations
 
 import io
+import time
 import urllib.request
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -108,10 +109,24 @@ class S3Ranges:
         response = self._s3().get_object(
             Bucket=self.bucket, Key=self.key,
             Range=f"bytes={offset}-{offset + length - 1}")
+        # The object can be replaced under a long-lived reader -- the
+        # acquisition worker rewrites these matrices when it extends them -- and
+        # a reader still using the old header would index a differently shaped
+        # file by the old stride and return whatever bytes happen to be there.
+        self.version = response.get("ETag")
         return response["Body"].read()
 
     def read_all(self) -> bytes:
-        return self._s3().get_object(Bucket=self.bucket, Key=self.key)["Body"].read()
+        response = self._s3().get_object(Bucket=self.bucket, Key=self.key)
+        self.version = response.get("ETag")
+        return response["Body"].read()
+
+    def fingerprint(self) -> str | None:
+        """What the object is right now, without fetching it."""
+        try:
+            return self._s3().head_object(Bucket=self.bucket, Key=self.key).get("ETag")
+        except Exception:            # noqa: BLE001 -- a check that cannot run is not a failure
+            return None
 
 
 @dataclass
@@ -131,6 +146,10 @@ class FileRanges:
 
     def read_all(self) -> bytes:
         return Path(self.path).read_bytes()
+
+    def fingerprint(self) -> str | None:
+        stat = Path(self.path).stat()
+        return f"{stat.st_mtime_ns}-{stat.st_size}"
 
 
 class RemoteMatrix:
@@ -171,6 +190,37 @@ class RemoteMatrix:
         self.ndim = 2
         self._data_offset = header.tell()
         self._row_bytes = shape[1] * dtype.itemsize
+        self._version = getattr(ranges, "fingerprint", lambda: None)()
+        self._checked_at = 0.0
+
+    def reread_if_replaced(self, every_seconds: float = 60.0) -> bool:
+        """Re-read the header if the object has been replaced since it was opened.
+
+        A matrix that grows from six years to thirteen keeps its name and changes
+        its stride. A reader holding the old stride indexes the new file wrongly
+        and returns bytes from the middle of somebody else's row, which arrive as
+        plausible-looking rubbish rather than as an error.
+        """
+        # Checking costs a HEAD, so it is throttled: a matrix is replaced a few
+        # times a year, and a request should not pay for that on every call.
+        now = time.monotonic()
+        if now - self._checked_at < every_seconds:
+            return False
+        self._checked_at = now
+        current = getattr(self._ranges, "fingerprint", lambda: None)()
+        if current is None or current == self._version:
+            return False
+        header = io.BytesIO(self._ranges.read(0, HEADER_PROBE_BYTES))
+        version = np.lib.format.read_magic(header)
+        reader = (np.lib.format.read_array_header_1_0 if version == (1, 0)
+                  else np.lib.format.read_array_header_2_0)
+        shape, _, dtype = reader(header)
+        self.shape, self.dtype = shape, dtype
+        self._data_offset = header.tell()
+        self._row_bytes = shape[1] * dtype.itemsize
+        self._version = current
+        self._cache.clear()
+        return True
 
     # -- reading ------------------------------------------------------------
 

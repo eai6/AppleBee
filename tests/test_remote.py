@@ -161,3 +161,35 @@ def test_a_region_file_extends_the_registry(tmp_path, monkeypatch):
     registry = dict(datasets.load_registry(datasets.REGIONS_JSON))
     registry.update(datasets.load_registry(os.environ[datasets.REGIONS_ENV]))
     assert "toy" in registry and "northeast" in registry
+
+
+def test_a_matrix_replaced_underneath_is_noticed(matrices):
+    """The worker rewrites these files when it extends them. A reader holding
+    the old stride would index the new file wrongly and return bytes from the
+    middle of another row -- plausible rubbish rather than an error."""
+    path, values = matrices
+    m = RemoteMatrix(FileRanges(path / "toy_tmean.values.npy"))
+    assert m.shape == (3, 10)
+    assert np.array_equal(m[1], values[1])
+
+    grown = np.arange(60, dtype="float32").reshape(3, 20)
+    np.save(path / "toy_tmean.values.npy", grown)
+
+    assert m.reread_if_replaced(every_seconds=0) is True
+    assert m.shape == (3, 20)
+    assert np.array_equal(m[1], grown[1])
+    assert m.reread_if_replaced(every_seconds=0) is False
+
+
+def test_the_check_is_throttled(matrices):
+    path, _ = matrices
+    m = RemoteMatrix(FileRanges(path / "toy_tmean.values.npy"))
+    # The first check always runs -- a process that has just started should not
+    # trust a header it has never verified.
+    assert m.reread_if_replaced(every_seconds=3600) is False
+    np.save(path / "toy_tmean.values.npy", np.zeros((3, 20), dtype="float32"))
+    # After that it is throttled: a matrix changes a few times a year, and a
+    # request should not pay for a HEAD on every call.
+    assert m.reread_if_replaced(every_seconds=3600) is False
+    assert m.shape == (3, 10)
+    assert m.reread_if_replaced(every_seconds=0) is True

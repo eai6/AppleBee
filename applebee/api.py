@@ -157,6 +157,31 @@ def _region(name: str):
     return dataset, tmean, ppt, dataset.forage()
 
 
+def _region_fresh(name: str):
+    """The region, having first noticed if its weather was replaced underneath.
+
+    The acquisition worker rewrites these matrices when it extends them, and a
+    process that opened the old one keeps its old row stride. Reading a
+    thirteen-year file with a six-year stride does not fail -- it returns bytes
+    from the middle of another row, which arrive as plausible rubbish. So the
+    header is rechecked, cheaply and rarely, before it is trusted.
+    """
+    dataset, tmean, ppt, forage = _region(name)
+    replaced = False
+    for grid in (tmean, ppt):
+        if hasattr(grid.values, "reread_if_replaced") and grid.values.reread_if_replaced():
+            replaced = True
+    if replaced:
+        # Everything derived from the old shape is now wrong: which years exist,
+        # which cells run, and any answer computed from them.
+        _weather_years.cache_clear()
+        _runnable_cells.cache_clear()
+        _regional_means.cache_clear()
+        for grid in (tmean, ppt):
+            grid.__post_init__()
+    return dataset, tmean, ppt, forage
+
+
 @lru_cache(maxsize=4)
 def _runnable_cells(name: str) -> pd.DataFrame:
     """Cells carrying weather, a floral index, and membership of the region."""
@@ -287,7 +312,7 @@ def point(lat: float, lon: float, params: ModelParams | dict | None = None, *,
     variable, so this costs two ranged reads however large the region is.
     """
     params = _as_params(params)
-    dataset, tmean, ppt, forage = _region(region)
+    dataset, tmean, ppt, forage = _region_fresh(region)
     cells = _runnable_cells(region)
 
     distances = _haversine_km(lat, lon, cells["lat"].to_numpy(), cells["lon"].to_numpy())
@@ -361,7 +386,7 @@ def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGI
     inside, so no cell is ever counted twice by two adjacent shapes.
     """
     params = _as_params(params)
-    dataset, tmean, ppt, forage = _region(region)
+    dataset, tmean, ppt, forage = _region_fresh(region)
     cells = _runnable_cells(region)
     lons, lats = cells["lon"].to_numpy(), cells["lat"].to_numpy()
 
@@ -910,7 +935,7 @@ def _objective_3(params: ModelParams) -> dict:
 
     from .evaluation import turley
 
-    _, tmean, ppt, forage = _region("pennsylvania")
+    _, tmean, ppt, forage = _region_fresh("pennsylvania")
     result = turley.evaluate(AppleBee(tmean, ppt, forage, params))
     design, fit = result["design"], result["fit"]
     # The mixed model's own p is optimistic here: one observation per year makes
