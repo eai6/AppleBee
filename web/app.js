@@ -494,7 +494,12 @@ function setMode(next) {
   $("radius-row").hidden = next !== "area";
   $("draw-row").hidden = next !== "poly";
   $("state-row").hidden = next !== "state";
-  if (next !== "poly") { state.polygon = []; drawSketch(); }
+  // Whatever the last mode drew belongs to that mode. A marker left behind
+  // while a shape is being drawn reads as part of the shape.
+  state.polygon = [];
+  drawSketch();
+  clearOverlays();
+  $("draw-hint").textContent = "Click the map to place corners.";
 }
 for (const [key, id] of Object.entries(MODES)) $(id).onclick = () => setMode(key);
 
@@ -524,23 +529,44 @@ $("draw-close").onclick = () => {
 };
 
 /* ---- the whole grid, as a file ---------------------------------------- */
+function selection() {
+  if (state.mode === "state") {
+    const chosen = chosenStates();
+    return chosen.length ? {states: chosen, label: chosen.length === 1
+      ? chosen[0] : `${chosen.length}_states`} : null;
+  }
+  if (state.mode === "poly" && state.polygon.closed)
+    return {polygon: state.polygon, label: "drawn_area"};
+  if (state.mode === "area" && state.selected)
+    return {lat: state.selected.location.requested.lat,
+            lon: state.selected.location.requested.lon,
+            radius_km: state.radiusKm, label: `${state.radiusKm}km`};
+  return null;
+}
+
 $("download").onclick = async function () {
   this.disabled = true;
   const was = this.textContent;
   this.innerHTML = '<span class="busy"></span> Preparing…';
   try {
-    const years = state.grid.springs.join(",");
-    const answer = await api(`/api/download?years=${years}`);
+    const where = selection() || {};
+    const answer = await api("/api/download", {
+      years: state.grid.springs, parameters: state.params,
+      lat: where.lat, lon: where.lon, radius_km: where.radius_km,
+      polygon: where.polygon, states: where.states,
+    });
     const url = URL.createObjectURL(new Blob([answer.csv], {type: "text/csv"}));
     const link = document.createElement("a");
     link.href = url;
-    link.download = `applebee_northeast_${state.grid.springs[0]}-${
+    link.download = `applebee_${where.label ? where.label.replace(/\W+/g, "_").toLowerCase()
+                                      : "northeast"}_${state.grid.springs[0]}-${
       state.grid.springs[state.grid.springs.length - 1]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+    const rows = answer.csv.split("\n").length - 2;
     $("download-hint").textContent =
-      `${state.grid.n.toLocaleString()} cells \u00D7 ${state.grid.springs.length} seasons, ` +
-      "one row per cell.";
+      `${rows.toLocaleString()} cells \u00D7 ${state.grid.springs.length} seasons` +
+      (where.label ? ", the selection on screen." : ", the whole region.");
   } catch (error) {
     $("download-hint").textContent = error.message;
   } finally { this.disabled = false; this.textContent = was; }

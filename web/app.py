@@ -104,10 +104,16 @@ def route(method: str, path: str, query: dict, body: dict | None,
                              years=body.get("years"))
     if path == "/api/states" and method == "GET":
         return 200, api.states(query.get("region", api.DEFAULT_REGION))
-    if path == "/api/download" and method == "GET":
-        years = [int(y) for y in query.get("years", "").split(",") if y.strip()]
-        return 200, {"csv": api.download(region=query.get("region", api.DEFAULT_REGION),
-                                         years=years or None)}
+    if path == "/api/download" and method in ("GET", "POST"):
+        raw = body.get("years") or query.get("years", "")
+        years = ([int(y) for y in raw.split(",") if y.strip()]
+                 if isinstance(raw, str) else [int(y) for y in raw])
+        return 200, {"csv": api.download(
+            body.get("parameters"),
+            region=body.get("region", query.get("region", api.DEFAULT_REGION)),
+            years=years or None, lat=body.get("lat"), lon=body.get("lon"),
+            radius_km=body.get("radius_km"), polygon=body.get("polygon"),
+            chosen_states=body.get("states"))}
     if path == "/api/point" and method in ("GET", "POST"):
         lat = _number(body.get("lat", query.get("lat")), "lat")
         lon = _number(body.get("lon", query.get("lon")), "lon")

@@ -408,7 +408,7 @@ def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGI
     model = AppleBee(tmean, ppt, forage, params)
     weather_years = list(years) if years else _weather_years(region)
     pairs = list(zip(chosen["col"].astype(int), chosen["row"].astype(int)))
-    results, failures = model.run(pairs, weather_years)
+    results, failures = _run_in_row_order(model, tmean, ppt, pairs, weather_years)
 
     springs = []
     for spring, group in results.groupby("offspring_year"):
@@ -462,6 +462,41 @@ def area(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGI
     }
 
 
+# How many cells to warm before running them. Each row is a few tens of
+# kilobytes, so a batch this size is tens of megabytes -- comfortable on a small
+# container, and large enough that the per-request overhead disappears.
+WARM_BATCH = 1500
+
+
+def _run_in_row_order(model, tmean, ppt, pairs, years):
+    """Run cells in the order they sit in the weather matrices, warming as it goes.
+
+    Where the weather is remote, a cell's series is a ranged read, and asking for
+    8,000 of them one at a time is thousands of requests. Sorting by matrix row
+    makes each row wanted once and then never again, so a modest cache suffices,
+    and neighbouring rows can be fetched together.
+
+    On a local memory-mapped grid this is simply a harmless reordering.
+    """
+    remote = [m for m in (tmean.values, ppt.values) if hasattr(m, "warm")]
+    if not remote:
+        return model.run(pairs, years)
+
+    order = sorted(pairs, key=lambda cr: tmean.cell_row(*cr))
+    frames, failures = [], []
+    for start in range(0, len(order), WARM_BATCH):
+        batch = order[start:start + WARM_BATCH]
+        rows = [tmean.cell_row(*cr) for cr in batch]
+        for matrix in remote:
+            matrix.warm(rows)
+        done, failed = model.run(batch, years)
+        frames.append(done)
+        if len(failed):
+            failures.append(failed)
+    return (pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(),
+            pd.concat(failures, ignore_index=True) if failures else pd.DataFrame())
+
+
 def _spread(values, places: int = 1) -> dict:
     """Median and range beside the mean, so a skewed distribution shows itself."""
     return {"median": round(float(values.median()), places),
@@ -488,27 +523,56 @@ def _day_of_year(year: int, doy: int) -> str:
 
 
 def download(params: ModelParams | dict | None = None, *, region: str = DEFAULT_REGION,
-             years: list[int] | None = None) -> str:
-    """Every cell's prediction, as CSV, for making figures outside the site.
+             years: list[int] | None = None, lat: float | None = None,
+             lon: float | None = None, radius_km: float | None = None,
+             polygon: list | None = None, chosen_states: list | None = None) -> str:
+    """Predictions as CSV, for making figures outside the site.
 
     One row per cell and one column per spring -- the shape a plotting script
     wants when it draws the seasons side by side -- taken from the cached
     regional run rather than recomputed.
+
+    Given a radius, a drawn shape or a list of states, only those cells are
+    written, so a download matches what is on screen rather than quietly
+    handing back the whole region.
     """
     answer = region_run(params, region=region)
     scale = answer["encoding"]["scale"]
-    lon = np.frombuffer(base64.b64decode(answer["lon"]), dtype="float32")
-    lat = np.frombuffer(base64.b64decode(answer["lat"]), dtype="float32")
     springs = [s for s in answer["springs"] if not years or s in years]
     if not springs:
         raise ValueError(f"no such spring; this run covers {answer['springs']}")
 
-    frame = pd.DataFrame({"lon": np.round(lon, 5), "lat": np.round(lat, 5)})
+    lons = np.frombuffer(base64.b64decode(answer["lon"]), dtype="float32")
+    lats = np.frombuffer(base64.b64decode(answer["lat"]), dtype="float32")
+    frame = pd.DataFrame({"lon": np.round(lons, 5), "lat": np.round(lats, 5)})
     for spring in springs:
         frame[f"spring_{spring}"] = (
             np.frombuffer(base64.b64decode(answer["by_spring"][str(spring)]),
                           dtype="uint16") / scale)
+
+    keep = _selected(region, lons, lats, lat, lon, radius_km, polygon, chosen_states)
+    if keep is not None:
+        frame = frame[keep]
+        if frame.empty:
+            raise ValueError("that selection contains no cells")
     return frame.to_csv(index=False, float_format="%.2f")
+
+
+def _selected(region, lons, lats, lat, lon, radius_km, polygon, chosen_states):
+    """A mask over the region's cells, or None when the whole region is wanted."""
+    if chosen_states:
+        table = _cell_states(region)
+        if table is None:
+            raise ValueError(f"the {region} region does not name its states")
+        cells = _runnable_cells(region)
+        wanted = set(map(tuple, table[table.NAME.isin(chosen_states)][["col", "row"]].values))
+        return np.array([(int(c), int(r)) in wanted
+                         for c, r in zip(cells["col"], cells["row"])])
+    if polygon:
+        return _inside(lons, lats, [(float(a), float(b)) for a, b in polygon])
+    if lat is not None and lon is not None and radius_km:
+        return _haversine_km(lat, lon, lats, lons) <= float(radius_km)
+    return None
 
 
 def region_key(params: ModelParams | dict | None = None, *,
@@ -549,7 +613,7 @@ def region_run(params: ModelParams | dict | None = None, *, region: str = DEFAUL
 
     model = AppleBee(tmean, ppt, forage, params)
     pairs = list(zip(cells["col"].astype(int), cells["row"].astype(int)))
-    results, failures = model.run(pairs, weather_years)
+    results, failures = _run_in_row_order(model, tmean, ppt, pairs, weather_years)
 
     springs = sorted(results.offspring_year.unique().tolist())
     by_cell = results.pivot_table(index=["col", "row"], columns="offspring_year",

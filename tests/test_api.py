@@ -404,3 +404,19 @@ def test_a_whole_state_may_exceed_the_drawn_area_ceiling():
     # named state is a deliberate request and is allowed to be large.
     answer = api.area(chosen_states=["New York"])
     assert answer["location"]["cells"] > api.MAX_AREA_CELLS
+
+
+@needs_northeast
+def test_a_download_follows_the_selection_on_screen():
+    whole = api.download(years=[2019]).count("\n")
+    one_state = api.download(years=[2019], chosen_states=["Vermont"]).count("\n")
+    nearby = api.download(years=[2019], lat=42.87, lon=-77.01, radius_km=10).count("\n")
+    assert nearby < one_state < whole
+    # A download of the whole region is still what you get with no selection.
+    assert whole - 1 == len(api._runnable_cells("northeast"))
+
+
+@needs_northeast
+def test_a_selection_holding_no_cells_is_refused():
+    with pytest.raises(ValueError, match="no cells"):
+        api.download(years=[2019], lat=42.87, lon=-77.01, radius_km=0.2)
